@@ -1,14 +1,17 @@
 package com.smartmedicine.dispenser;
 
 import android.app.AlarmManager;
+import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -79,10 +82,10 @@ public class SetAlarmActivity extends AppCompatActivity {
         hourAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         hourSpinner.setAdapter(hourAdapter);
 
-        // Minute spinner (00-55 in 5-minute increments)
+        // Minute spinner (00-59) - ALL MINUTES
         List<String> minutes = new ArrayList<>();
         minutes.add("Minute");
-        for (int i = 0; i < 60; i += 5) {
+        for (int i = 0; i < 60; i++) {
             minutes.add(String.format("%02d", i));
         }
         ArrayAdapter<String> minuteAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, minutes);
@@ -227,11 +230,129 @@ public class SetAlarmActivity extends AppCompatActivity {
         }
     }
 
+    private void cancelAlarm(String medicineName, String time) {
+        // Parse time string to get hour, minute, period
+        String[] timeParts = time.split(" ");
+        String[] hourMinute = timeParts[0].split(":");
+        String hour = hourMinute[0];
+        String minute = hourMinute[1];
+        String period = timeParts[1];
+
+        // Create matching intent for the alarm to cancel
+        Intent intent = new Intent(this, AlarmReceiver.class);
+        intent.putExtra("medicine_name", medicineName);
+
+        // Use the same request code that was used to create the alarm
+        int requestCode = (medicineName + hour + minute + period).hashCode();
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        // Cancel the alarm
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager != null) {
+            alarmManager.cancel(pendingIntent);
+        }
+
+        // Remove from medicine manager
+        medicineManager.removeAlarmTime(medicineName, time);
+
+        // Update UI
+        updateAlarmsList();
+
+        Toast.makeText(this, "Alarm canceled for " + medicineName + " at " + time, Toast.LENGTH_SHORT).show();
+    }
+
+    private void clearAllAlarms() {
+        // Show confirmation dialog
+        new AlertDialog.Builder(this)
+                .setTitle("Clear All Alarms")
+                .setMessage("Are you sure you want to cancel all alarms? This cannot be undone.")
+                .setPositiveButton("Yes, Clear All", (dialog, which) -> {
+                    // Get all medicines and their alarms
+                    List<Medicine> medicines = medicineManager.getAllMedicines();
+
+                    // Cancel each alarm in the system
+                    AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                    if (alarmManager != null) {
+                        for (Medicine medicine : medicines) {
+                            String medicineName = medicine.getName();
+                            for (String time : medicine.getAlarmTimes()) {
+                                // Parse time
+                                String[] timeParts = time.split(" ");
+                                String[] hourMinute = timeParts[0].split(":");
+                                String hour = hourMinute[0];
+                                String minute = hourMinute[1];
+                                String period = timeParts[1];
+
+                                // Create matching intent
+                                Intent intent = new Intent(this, AlarmReceiver.class);
+                                intent.putExtra("medicine_name", medicineName);
+
+                                // Use the same request code
+                                int requestCode = (medicineName + hour + minute + period).hashCode();
+                                PendingIntent pendingIntent = PendingIntent.getBroadcast(this, requestCode, intent,
+                                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+                                // Cancel the alarm
+                                alarmManager.cancel(pendingIntent);
+                            }
+                        }
+                    }
+
+                    // Clear all medicines from storage
+                    medicineManager.clearAllMedicines();
+
+                    // Update UI
+                    updateAlarmsList();
+
+                    Toast.makeText(this, "All alarms cleared", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void updateAlarmsList() {
         alarmsContainer.removeAllViews();
         List<Medicine> medicines = medicineManager.getAllMedicines();
 
-        if (medicines.isEmpty()) {
+        // Create header with title and clear all button
+        LinearLayout headerLayout = new LinearLayout(this);
+        headerLayout.setOrientation(LinearLayout.HORIZONTAL);
+        headerLayout.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        headerLayout.setPadding(0, 0, 0, 16);
+
+        // Title
+        TextView titleText = new TextView(this);
+        titleText.setText("Scheduled Alarms");
+        titleText.setTextSize(18);
+        titleText.setTextColor(getResources().getColor(R.color.primary_green));
+        titleText.setTypeface(null, Typeface.BOLD); // CORRECTED LINE
+        titleText.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1
+        ));
+
+        // Clear All button
+        Button clearAllButton = new Button(this);
+        clearAllButton.setText("Clear All");
+        clearAllButton.setBackgroundResource(R.drawable.button_warning_bg);
+        clearAllButton.setTextColor(getResources().getColor(android.R.color.white));
+        clearAllButton.setOnClickListener(v -> clearAllAlarms());
+
+        // Only show Clear All button if there are alarms
+        if (!medicines.isEmpty()) {
+            headerLayout.addView(titleText);
+            headerLayout.addView(clearAllButton);
+            alarmsContainer.addView(headerLayout);
+        } else {
+            // Just add the title without the button
+            titleText.setGravity(View.TEXT_ALIGNMENT_CENTER);
+            headerLayout.addView(titleText);
+            alarmsContainer.addView(headerLayout);
+
+            // Show empty state message
             TextView emptyText = new TextView(this);
             emptyText.setText("No alarms set yet");
             emptyText.setGravity(View.TEXT_ALIGNMENT_CENTER);
@@ -241,6 +362,7 @@ public class SetAlarmActivity extends AppCompatActivity {
             return;
         }
 
+        // Add medicine cards
         for (Medicine medicine : medicines) {
             CardView medicineCard = createMedicineAlarmCard(medicine);
             alarmsContainer.addView(medicineCard);
@@ -262,48 +384,119 @@ public class SetAlarmActivity extends AppCompatActivity {
         cardContent.setOrientation(LinearLayout.VERTICAL);
         cardContent.setPadding(24, 24, 24, 24);
 
-        // Medicine header
+        // Medicine header with edit button
+        LinearLayout headerLayout = new LinearLayout(this);
+        headerLayout.setOrientation(LinearLayout.HORIZONTAL);
+        headerLayout.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        // Medicine name and quantity text
         TextView headerText = new TextView(this);
         String headerStr = medicine.getName() + " (" + medicine.getQuantity() +
                 " pill" + (medicine.getQuantity() > 1 ? "s" : "") + ")";
         headerText.setText(headerStr);
         headerText.setTextSize(16);
         headerText.setTextColor(getResources().getColor(R.color.text_primary));
+        headerText.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1
+        ));
 
-        cardContent.addView(headerText);
+        // Edit quantity button
+        ImageButton editButton = new ImageButton(this);
+        editButton.setImageResource(android.R.drawable.ic_menu_edit);
+        editButton.setBackgroundResource(0); // No background
+        editButton.setOnClickListener(v -> showEditQuantityDialog(medicine));
+
+        headerLayout.addView(headerText);
+        headerLayout.addView(editButton);
+        cardContent.addView(headerLayout);
 
         // Alarm times
         if (!medicine.getAlarmTimes().isEmpty()) {
             LinearLayout timesContainer = new LinearLayout(this);
-            timesContainer.setOrientation(LinearLayout.HORIZONTAL);
+            timesContainer.setOrientation(LinearLayout.VERTICAL); // Changed to vertical for better layout with delete buttons
             LinearLayout.LayoutParams timesParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
             );
             timesParams.setMargins(0, 16, 0, 0);
             timesContainer.setLayoutParams(timesParams);
 
             for (String time : medicine.getAlarmTimes()) {
+                // Create a horizontal layout for each time with delete button
+                LinearLayout timeRow = new LinearLayout(this);
+                timeRow.setOrientation(LinearLayout.HORIZONTAL);
+                timeRow.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                ));
+                timeRow.setPadding(0, 8, 0, 8);
+
+                // Time badge
                 TextView timeText = new TextView(this);
                 timeText.setText(time);
                 timeText.setBackgroundResource(R.drawable.time_badge_background);
                 timeText.setPadding(16, 8, 16, 8);
                 timeText.setTextColor(getResources().getColor(R.color.accent_blue));
+                timeText.setLayoutParams(new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1
+                ));
 
-                LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                );
-                timeParams.setMargins(0, 0, 12, 0);
-                timeText.setLayoutParams(timeParams);
+                // Delete button
+                ImageButton deleteButton = new ImageButton(this);
+                deleteButton.setImageResource(android.R.drawable.ic_menu_delete);
+                deleteButton.setBackgroundResource(0); // No background
+                deleteButton.setOnClickListener(v -> {
+                    // Show confirmation dialog
+                    new AlertDialog.Builder(this)
+                            .setTitle("Cancel Alarm")
+                            .setMessage("Are you sure you want to cancel the alarm for " + medicine.getName() + " at " + time + "?")
+                            .setPositiveButton("Yes", (dialog, which) -> cancelAlarm(medicine.getName(), time))
+                            .setNegativeButton("No", null)
+                            .show();
+                });
 
-                timesContainer.addView(timeText);
+                timeRow.addView(timeText);
+                timeRow.addView(deleteButton);
+                timesContainer.addView(timeRow);
             }
             cardContent.addView(timesContainer);
         }
 
         cardView.addView(cardContent);
         return cardView;
+    }
+
+    private void showEditQuantityDialog(Medicine medicine) {
+        // Create an EditText for the quantity input
+        final EditText quantityInput = new EditText(this);
+        quantityInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        quantityInput.setText(String.valueOf(medicine.getQuantity()));
+
+        // Create dialog
+        new AlertDialog.Builder(this)
+                .setTitle("Edit Quantity")
+                .setMessage("Update quantity for " + medicine.getName())
+                .setView(quantityInput)
+                .setPositiveButton("Update", (dialog, which) -> {
+                    String newQuantityStr = quantityInput.getText().toString().trim();
+                    if (!newQuantityStr.isEmpty()) {
+                        int newQuantity = Integer.parseInt(newQuantityStr);
+                        if (newQuantity > 0) {
+                            // Update medicine quantity
+                            medicine.setQuantity(newQuantity);
+                            medicineManager.updateMedicineQuantity(medicine.getName(), newQuantity);
+                            updateAlarmsList();
+                            Toast.makeText(this, "Quantity updated", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(this, "Quantity must be greater than 0", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     @Override

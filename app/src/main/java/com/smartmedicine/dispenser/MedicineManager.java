@@ -90,6 +90,23 @@ public class MedicineManager {
         saveMedicines(medicines);
     }
 
+    // New method to update medicine quantity
+    public void updateMedicineQuantity(String medicineName, int newQuantity) {
+        List<Medicine> medicines = getAllMedicines();
+        for (Medicine medicine : medicines) {
+            if (medicine.getName().equals(medicineName)) {
+                medicine.setQuantity(newQuantity);
+                break;
+            }
+        }
+        saveMedicines(medicines);
+    }
+
+    // New method to clear all medicines
+    public void clearAllMedicines() {
+        prefs.edit().putString(MEDICINES_KEY, "").apply();
+    }
+
     // Medicine log methods
     public List<MedicineLogEntry> getMedicineLog() {
         String json = prefs.getString(LOG_KEY, "");
