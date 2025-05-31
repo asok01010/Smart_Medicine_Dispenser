@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_home"
+        android:icon="@drawable/ic_home"
+        android:title="Home" />
+    <item
+        android:id="@+id/nav_set_alarm"
+        android:icon="@drawable/ic_alarm"
+        android:title="Set Alarm" />
+    <item
+        android:id="@+id/nav_medicine_log"
+        android:icon="@drawable/ic_list"
+        android:title="Medicine Log" />
+    <item
+        android:id="@+id/nav_bluetooth"
+        android:icon="@drawable/ic_bluetooth"
+        android:title="Bluetooth" />
+</menu>
