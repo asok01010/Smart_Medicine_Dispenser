@@ -156,14 +156,7 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Scheduled Alarms"
-                        android:textColor="@color/primary_green"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="16dp" />
+
 
                     <LinearLayout
                         android:id="@+id/alarms_container"

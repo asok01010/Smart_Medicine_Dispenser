@@ -329,29 +329,29 @@ public class SetAlarmActivity extends AppCompatActivity {
         titleText.setText("Scheduled Alarms");
         titleText.setTextSize(18);
         titleText.setTextColor(getResources().getColor(R.color.primary_green));
-        titleText.setTypeface(null, Typeface.BOLD); // CORRECTED LINE
+        titleText.setTypeface(null, Typeface.BOLD);
         titleText.setLayoutParams(new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1
         ));
 
-        // Clear All button
-        Button clearAllButton = new Button(this);
-        clearAllButton.setText("Clear All");
-        clearAllButton.setBackgroundResource(R.drawable.button_warning_bg);
-        clearAllButton.setTextColor(getResources().getColor(android.R.color.white));
-        clearAllButton.setOnClickListener(v -> clearAllAlarms());
+        // Add title to header
+        headerLayout.addView(titleText);
 
-        // Only show Clear All button if there are alarms
+        // Only add Clear All button if there are alarms
         if (!medicines.isEmpty()) {
-            headerLayout.addView(titleText);
+            Button clearAllButton = new Button(this);
+            clearAllButton.setText("Clear All");
+            clearAllButton.setBackgroundResource(R.drawable.button_warning_bg);
+            clearAllButton.setTextColor(getResources().getColor(android.R.color.white));
+            clearAllButton.setOnClickListener(v -> clearAllAlarms());
             headerLayout.addView(clearAllButton);
-            alarmsContainer.addView(headerLayout);
-        } else {
-            // Just add the title without the button
-            titleText.setGravity(View.TEXT_ALIGNMENT_CENTER);
-            headerLayout.addView(titleText);
-            alarmsContainer.addView(headerLayout);
+        }
 
+        // Add header to container
+        alarmsContainer.addView(headerLayout);
+
+        // Add content based on whether there are medicines or not
+        if (medicines.isEmpty()) {
             // Show empty state message
             TextView emptyText = new TextView(this);
             emptyText.setText("No alarms set yet");
@@ -359,13 +359,12 @@ public class SetAlarmActivity extends AppCompatActivity {
             emptyText.setPadding(32, 32, 32, 32);
             emptyText.setTextColor(getResources().getColor(android.R.color.darker_gray));
             alarmsContainer.addView(emptyText);
-            return;
-        }
-
-        // Add medicine cards
-        for (Medicine medicine : medicines) {
-            CardView medicineCard = createMedicineAlarmCard(medicine);
-            alarmsContainer.addView(medicineCard);
+        } else {
+            // Add medicine cards
+            for (Medicine medicine : medicines) {
+                CardView medicineCard = createMedicineAlarmCard(medicine);
+                alarmsContainer.addView(medicineCard);
+            }
         }
     }
 
@@ -416,7 +415,7 @@ public class SetAlarmActivity extends AppCompatActivity {
         // Alarm times
         if (!medicine.getAlarmTimes().isEmpty()) {
             LinearLayout timesContainer = new LinearLayout(this);
-            timesContainer.setOrientation(LinearLayout.VERTICAL); // Changed to vertical for better layout with delete buttons
+            timesContainer.setOrientation(LinearLayout.VERTICAL);
             LinearLayout.LayoutParams timesParams = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
