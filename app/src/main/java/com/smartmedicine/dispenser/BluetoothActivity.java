@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothDevice;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -24,10 +25,12 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Set;
 
-public class BluetoothActivity extends AppCompatActivity implements BluetoothManager.BluetoothConnectionListener {
+public class BluetoothActivity extends AppCompatActivity {
 
+    private static final String TAG = "BluetoothActivity";
     private static final int BLUETOOTH_PERMISSION_REQUEST = 1001;
 
+    // UI Components
     private TextView connectionStatus;
     private Button scanBtn;
     private Button disconnectBtn;
@@ -35,117 +38,233 @@ public class BluetoothActivity extends AppCompatActivity implements BluetoothMan
     private Button requestStatusBtn;
     private Button requestHistoryBtn;
     private LinearLayout deviceList;
-    private LinearLayout deviceInfo;
     private TextView emptyDevicesText;
-    private TextView emptyDeviceInfoText;
     private TextView logTextView;
     private ScrollView logScrollView;
 
+    // Managers
     private BluetoothManager bluetoothManager;
     private MedicineManager medicineManager;
+
+    // Connection listener
+    private BluetoothManager.BluetoothConnectionListener connectionListener = new BluetoothManager.BluetoothConnectionListener() {
+        @Override
+        public void onConnectionStatusChanged(boolean connected, String deviceName) {
+            runOnUiThread(() -> {
+                try {
+                    updateConnectionStatus(connected, deviceName);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error updating connection status: " + e.getMessage(), e);
+                }
+            });
+        }
+
+        @Override
+        public void onDataReceived(String data) {
+            runOnUiThread(() -> {
+                try {
+                    addToLog("Received: " + data);
+                    processReceivedData(data);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error processing received data: " + e.getMessage(), e);
+                }
+            });
+        }
+
+        @Override
+        public void onError(String error) {
+            runOnUiThread(() -> {
+                try {
+                    addToLog("Error: " + error);
+                    showToast("Error: " + error);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error showing error message: " + e.getMessage(), e);
+                }
+            });
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_bluetooth);
 
-        initViews();
-        setupToolbar();
-        setupButtons();
+        try {
+            setContentView(R.layout.activity_bluetooth);
 
-        bluetoothManager = BluetoothManager.getInstance();
-        bluetoothManager.setConnectionListener(this);
+            initializeViews();
+            setupToolbar();
+            setupClickListeners();
+            initializeManagers();
 
-        medicineManager = MedicineManager.getInstance(this);
+            addToLog("Bluetooth Activity started");
 
-        updateUI();
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onCreate: " + e.getMessage(), e);
+            showToast("Error initializing Bluetooth Activity: " + e.getMessage());
+            finish();
+        }
     }
 
-    private void initViews() {
-        connectionStatus = findViewById(R.id.connection_status);
-        scanBtn = findViewById(R.id.scan_btn);
-        disconnectBtn = findViewById(R.id.disconnect_btn);
-        syncAlarmsBtn = findViewById(R.id.sync_alarms_btn);
-        requestStatusBtn = findViewById(R.id.request_status_btn);
-        requestHistoryBtn = findViewById(R.id.request_history_btn);
-        deviceList = findViewById(R.id.device_list);
-        deviceInfo = findViewById(R.id.device_info);
-        emptyDevicesText = findViewById(R.id.empty_devices_text);
-        emptyDeviceInfoText = findViewById(R.id.empty_device_info_text);
-        logTextView = findViewById(R.id.log_text);
-        logScrollView = findViewById(R.id.log_scroll);
+    private void initializeViews() {
+        try {
+            connectionStatus = findViewById(R.id.connection_status);
+            scanBtn = findViewById(R.id.scan_btn);
+            disconnectBtn = findViewById(R.id.disconnect_btn);
+            syncAlarmsBtn = findViewById(R.id.sync_alarms_btn);
+            requestStatusBtn = findViewById(R.id.request_status_btn);
+            requestHistoryBtn = findViewById(R.id.request_history_btn);
+            deviceList = findViewById(R.id.device_list);
+            emptyDevicesText = findViewById(R.id.empty_devices_text);
+            logTextView = findViewById(R.id.log_text);
+            logScrollView = findViewById(R.id.log_scroll);
+
+            // Verify all views are found
+            if (connectionStatus == null || scanBtn == null || disconnectBtn == null ||
+                    syncAlarmsBtn == null || requestStatusBtn == null || requestHistoryBtn == null ||
+                    deviceList == null || emptyDevicesText == null ||
+                    logTextView == null || logScrollView == null) {
+                throw new RuntimeException("One or more views not found in layout");
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing views: " + e.getMessage(), e);
+            throw e;
+        }
     }
 
     private void setupToolbar() {
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            getSupportActionBar().setTitle("Bluetooth");
+        try {
+            Toolbar toolbar = findViewById(R.id.toolbar);
+            if (toolbar != null) {
+                setSupportActionBar(toolbar);
+                if (getSupportActionBar() != null) {
+                    getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+                    getSupportActionBar().setTitle("Bluetooth");
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up toolbar: " + e.getMessage(), e);
         }
     }
 
-    private void setupButtons() {
-        scanBtn.setOnClickListener(v -> {
-            if (checkAndRequestBluetoothPermissions()) {
-                scanForDevices();
-            }
-        });
+    private void setupClickListeners() {
+        try {
+            scanBtn.setOnClickListener(v -> {
+                try {
+                    if (checkBluetoothPermissions()) {
+                        scanForDevices();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in scan button click: " + e.getMessage(), e);
+                    showToast("Error scanning: " + e.getMessage());
+                }
+            });
 
-        disconnectBtn.setOnClickListener(v -> disconnectDevice());
+            disconnectBtn.setOnClickListener(v -> {
+                try {
+                    disconnectDevice();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in disconnect button click: " + e.getMessage(), e);
+                    showToast("Error disconnecting: " + e.getMessage());
+                }
+            });
 
-        syncAlarmsBtn.setOnClickListener(v -> syncAlarms());
+            syncAlarmsBtn.setOnClickListener(v -> {
+                try {
+                    syncAlarms();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in sync alarms button click: " + e.getMessage(), e);
+                    showToast("Error syncing alarms: " + e.getMessage());
+                }
+            });
 
-        requestStatusBtn.setOnClickListener(v -> {
-            if (bluetoothManager.isConnected()) {
-                bluetoothManager.requestMedicineStatus();
-                addToLog("Requesting medicine status...");
-            } else {
-                Toast.makeText(this, "Not connected to device", Toast.LENGTH_SHORT).show();
-            }
-        });
+            requestStatusBtn.setOnClickListener(v -> {
+                try {
+                    requestStatus();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in request status button click: " + e.getMessage(), e);
+                    showToast("Error requesting status: " + e.getMessage());
+                }
+            });
 
-        requestHistoryBtn.setOnClickListener(v -> {
-            if (bluetoothManager.isConnected()) {
-                bluetoothManager.requestMedicineHistory();
-                addToLog("Requesting medicine history...");
-            } else {
-                Toast.makeText(this, "Not connected to device", Toast.LENGTH_SHORT).show();
-            }
-        });
+            requestHistoryBtn.setOnClickListener(v -> {
+                try {
+                    requestHistory();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in request history button click: " + e.getMessage(), e);
+                    showToast("Error requesting history: " + e.getMessage());
+                }
+            });
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up click listeners: " + e.getMessage(), e);
+            throw e;
+        }
     }
 
-    private boolean checkAndRequestBluetoothPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Android 12+ permissions
-            String[] permissions = {
-                    Manifest.permission.BLUETOOTH_SCAN,
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-            };
+    private void initializeManagers() {
+        try {
+            bluetoothManager = BluetoothManager.getInstance();
+            bluetoothManager.setConnectionListener(connectionListener);
 
-            for (String permission : permissions) {
-                if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(this, permissions, BLUETOOTH_PERMISSION_REQUEST);
-                    return false;
-                }
-            }
-        } else {
-            // Android 11 and below permissions
-            String[] permissions = {
-                    Manifest.permission.BLUETOOTH,
-                    Manifest.permission.BLUETOOTH_ADMIN,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-            };
+            medicineManager = MedicineManager.getInstance(this);
 
-            for (String permission : permissions) {
-                if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(this, permissions, BLUETOOTH_PERMISSION_REQUEST);
-                    return false;
-                }
-            }
+            updateConnectionStatus(false, "");
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing managers: " + e.getMessage(), e);
+            throw e;
         }
-        return true;
+    }
+
+    private boolean checkBluetoothPermissions() {
+        try {
+            if (!bluetoothManager.isBluetoothSupported()) {
+                showToast("Bluetooth not supported on this device");
+                return false;
+            }
+
+            if (!bluetoothManager.isBluetoothEnabled()) {
+                showToast("Please enable Bluetooth in settings");
+                return false;
+            }
+
+            // Check permissions based on Android version
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                String[] permissions = {
+                        Manifest.permission.BLUETOOTH_SCAN,
+                        Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                };
+
+                for (String permission : permissions) {
+                    if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions(this, permissions, BLUETOOTH_PERMISSION_REQUEST);
+                        return false;
+                    }
+                }
+            } else {
+                String[] permissions = {
+                        Manifest.permission.BLUETOOTH,
+                        Manifest.permission.BLUETOOTH_ADMIN,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                };
+
+                for (String permission : permissions) {
+                    if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions(this, permissions, BLUETOOTH_PERMISSION_REQUEST);
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking Bluetooth permissions: " + e.getMessage(), e);
+            showToast("Error checking permissions: " + e.getMessage());
+            return false;
+        }
     }
 
     @Override
@@ -153,289 +272,324 @@ public class BluetoothActivity extends AppCompatActivity implements BluetoothMan
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == BLUETOOTH_PERMISSION_REQUEST) {
-            boolean allPermissionsGranted = true;
+            boolean allGranted = true;
             for (int result : grantResults) {
                 if (result != PackageManager.PERMISSION_GRANTED) {
-                    allPermissionsGranted = false;
+                    allGranted = false;
                     break;
                 }
             }
 
-            if (allPermissionsGranted) {
-                Toast.makeText(this, "Permissions granted! You can now scan for devices.", Toast.LENGTH_SHORT).show();
+            if (allGranted) {
+                showToast("Permissions granted! You can now scan for devices.");
                 scanForDevices();
             } else {
-                Toast.makeText(this, "Bluetooth permissions are required to scan for devices.", Toast.LENGTH_LONG).show();
+                showToast("Bluetooth permissions are required to use this feature.");
             }
-        }
-    }
-
-    private void updateUI() {
-        if (bluetoothManager.isConnected()) {
-            BluetoothDevice device = bluetoothManager.getConnectedDevice();
-            String deviceName = "Unknown";
-            if (device != null && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                deviceName = device.getName() != null ? device.getName() : "Unknown Device";
-            }
-            connectionStatus.setText("Connected to " + deviceName);
-            connectionStatus.setBackgroundResource(R.drawable.status_connected_bg);
-            disconnectBtn.setEnabled(true);
-            syncAlarmsBtn.setEnabled(true);
-            requestStatusBtn.setEnabled(true);
-            requestHistoryBtn.setEnabled(true);
-            updateDeviceInfo(device);
-        } else {
-            connectionStatus.setText("Disconnected");
-            connectionStatus.setBackgroundResource(R.drawable.status_disconnected_bg);
-            disconnectBtn.setEnabled(false);
-            syncAlarmsBtn.setEnabled(false);
-            requestStatusBtn.setEnabled(false);
-            requestHistoryBtn.setEnabled(false);
-            clearDeviceInfo();
         }
     }
 
     private void scanForDevices() {
-        if (!bluetoothManager.isBluetoothSupported()) {
-            Toast.makeText(this, "Bluetooth not supported", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        try {
+            addToLog("Scanning for paired devices...");
 
-        if (!bluetoothManager.isBluetoothEnabled()) {
-            Toast.makeText(this, "Please enable Bluetooth", Toast.LENGTH_SHORT).show();
-            return;
-        }
+            // Clear device list
+            deviceList.removeAllViews();
+            deviceList.addView(emptyDevicesText);
+            emptyDevicesText.setText("Scanning...");
 
-        // Clear existing device list
-        deviceList.removeAllViews();
-        emptyDevicesText.setVisibility(View.GONE);
-        addToLog("Scanning for devices...");
+            // Get paired devices
+            Set<BluetoothDevice> pairedDevices = bluetoothManager.getPairedDevices();
 
-        // Check permissions before accessing Bluetooth
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Bluetooth permissions not granted", Toast.LENGTH_SHORT).show();
+            if (pairedDevices == null || pairedDevices.isEmpty()) {
+                emptyDevicesText.setText("No paired devices found. Please pair your HC-05 device in Android Bluetooth settings first.");
+                addToLog("No paired devices found");
                 return;
             }
-        }
 
-        Set<BluetoothDevice> pairedDevices = bluetoothManager.getPairedDevices();
+            // Remove empty text and add devices
+            deviceList.removeView(emptyDevicesText);
 
-        if (pairedDevices == null || pairedDevices.isEmpty()) {
-            emptyDevicesText.setText("No paired devices found");
-            emptyDevicesText.setVisibility(View.VISIBLE);
-            addToLog("No paired devices found");
-            return;
-        }
-
-        // Display paired devices
-        boolean foundHCDevice = false;
-        for (BluetoothDevice device : pairedDevices) {
-            String deviceName = null;
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                deviceName = device.getName();
+            for (BluetoothDevice device : pairedDevices) {
+                addDeviceToList(device);
             }
 
-            // Show all devices, but highlight HC-05/HC-06
-            boolean isHCDevice = deviceName != null && (deviceName.contains("HC-05") || deviceName.contains("HC-06"));
-            addDeviceToList(device, isHCDevice);
-            if (isHCDevice) {
-                foundHCDevice = true;
-            }
-        }
+            addToLog("Found " + pairedDevices.size() + " paired device(s)");
 
-        if (!foundHCDevice) {
-            addToLog("Warning: No HC-05/HC-06 devices found in paired devices");
-        } else {
-            addToLog("Found HC-05/HC-06 device(s)");
+        } catch (Exception e) {
+            Log.e(TAG, "Error scanning for devices: " + e.getMessage(), e);
+            showToast("Error scanning: " + e.getMessage());
+            emptyDevicesText.setText("Error scanning for devices");
         }
     }
 
-    private void addDeviceToList(BluetoothDevice device, boolean isHCDevice) {
-        LinearLayout deviceItem = new LinearLayout(this);
-        deviceItem.setOrientation(LinearLayout.HORIZONTAL);
-        deviceItem.setPadding(0, 16, 0, 16);
+    private void addDeviceToList(BluetoothDevice device) {
+        try {
+            // Create device item layout
+            LinearLayout deviceItem = new LinearLayout(this);
+            deviceItem.setOrientation(LinearLayout.HORIZONTAL);
+            deviceItem.setPadding(0, 16, 0, 16);
 
-        LinearLayout deviceInfoLayout = new LinearLayout(this);
-        deviceInfoLayout.setOrientation(LinearLayout.VERTICAL);
-        deviceInfoLayout.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            // Device info layout
+            LinearLayout deviceInfoLayout = new LinearLayout(this);
+            deviceInfoLayout.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            deviceInfoLayout.setLayoutParams(infoParams);
 
-        TextView deviceName = new TextView(this);
-        String name = "Unknown Device";
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-            name = device.getName() != null ? device.getName() : "Unknown Device";
+            // Device name
+            TextView deviceName = new TextView(this);
+            String name = "Unknown Device";
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                        name = device.getName() != null ? device.getName() : "Unknown Device";
+                    }
+                } else {
+                    name = device.getName() != null ? device.getName() : "Unknown Device";
+                }
+            } catch (SecurityException e) {
+                Log.w(TAG, "Permission not granted for device name");
+            }
+
+            deviceName.setText(name);
+            deviceName.setTextSize(16);
+            deviceName.setTextColor(getResources().getColor(R.color.text_primary));
+
+            // Device address
+            TextView deviceAddress = new TextView(this);
+            deviceAddress.setText(device.getAddress());
+            deviceAddress.setTextSize(12);
+            deviceAddress.setTextColor(getResources().getColor(R.color.text_secondary));
+
+            deviceInfoLayout.addView(deviceName);
+            deviceInfoLayout.addView(deviceAddress);
+
+            // Connect button
+            Button connectBtn = new Button(this);
+            connectBtn.setText("CONNECT");
+            connectBtn.setBackgroundResource(R.drawable.button_primary_bg);
+            connectBtn.setTextColor(getResources().getColor(android.R.color.white));
+            connectBtn.setOnClickListener(v -> connectToDevice(device));
+
+            deviceItem.addView(deviceInfoLayout);
+            deviceItem.addView(connectBtn);
+
+            deviceList.addView(deviceItem);
+
+            // Add divider
+            View divider = new View(this);
+            LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1);
+            divider.setLayoutParams(dividerParams);
+            divider.setBackgroundColor(getResources().getColor(R.color.divider_color));
+            deviceList.addView(divider);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding device to list: " + e.getMessage(), e);
         }
-        deviceName.setText(name);
-        deviceName.setTextSize(16);
-        deviceName.setTextColor(getResources().getColor(isHCDevice ? R.color.primary_green : R.color.text_primary));
-
-        TextView deviceAddress = new TextView(this);
-        deviceAddress.setText(device.getAddress());
-        deviceAddress.setTextSize(12);
-        deviceAddress.setTextColor(getResources().getColor(R.color.text_secondary));
-
-        deviceInfoLayout.addView(deviceName);
-        deviceInfoLayout.addView(deviceAddress);
-
-        Button connectBtn = new Button(this);
-        connectBtn.setText("Connect");
-        connectBtn.setBackgroundResource(isHCDevice ? R.drawable.button_primary_bg : R.drawable.button_secondary_bg);
-        connectBtn.setTextColor(getResources().getColor(android.R.color.white));
-        connectBtn.setOnClickListener(v -> connectToDevice(device));
-
-        deviceItem.addView(deviceInfoLayout);
-        deviceItem.addView(connectBtn);
-
-        deviceList.addView(deviceItem);
-
-        // Add divider
-        View divider = new View(this);
-        divider.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
-        divider.setBackgroundColor(getResources().getColor(android.R.color.darker_gray));
-        deviceList.addView(divider);
     }
 
     private void connectToDevice(BluetoothDevice device) {
-        String deviceName = "Unknown Device";
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-            deviceName = device.getName() != null ? device.getName() : "Unknown Device";
+        try {
+            String deviceName = "Unknown Device";
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                        deviceName = device.getName() != null ? device.getName() : "Unknown Device";
+                    }
+                } else {
+                    deviceName = device.getName() != null ? device.getName() : "Unknown Device";
+                }
+            } catch (SecurityException e) {
+                Log.w(TAG, "Permission not granted for device name");
+            }
+
+            addToLog("Attempting to connect to " + deviceName + " (" + device.getAddress() + ")...");
+            showToast("Connecting to " + deviceName + "...");
+
+            bluetoothManager.connectToDevice(device);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error connecting to device: " + e.getMessage(), e);
+            showToast("Error connecting: " + e.getMessage());
         }
-        Toast.makeText(this, "Connecting to " + deviceName + "...", Toast.LENGTH_SHORT).show();
-        addToLog("Connecting to " + deviceName + "...");
-        bluetoothManager.connectToDevice(device);
     }
 
     private void disconnectDevice() {
-        addToLog("Disconnecting...");
-        bluetoothManager.disconnect();
+        try {
+            addToLog("Disconnecting...");
+            bluetoothManager.disconnect();
+        } catch (Exception e) {
+            Log.e(TAG, "Error disconnecting: " + e.getMessage(), e);
+            showToast("Error disconnecting: " + e.getMessage());
+        }
     }
 
     private void syncAlarms() {
-        if (!bluetoothManager.isConnected()) {
-            Toast.makeText(this, "Not connected to device", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle("Sync Alarms")
-                .setMessage("Do you want to sync all alarms to the Arduino device?")
-                .setPositiveButton("Yes", (dialog, which) -> {
-                    addToLog("Syncing alarms to Arduino...");
-                    bluetoothManager.syncAllAlarms(medicineManager.getAllMedicines());
-                })
-                .setNegativeButton("No", null)
-                .show();
-    }
-
-    private void updateDeviceInfo(BluetoothDevice device) {
-        deviceInfo.removeAllViews();
-        emptyDeviceInfoText.setVisibility(View.GONE);
-
-        if (device != null) {
-            TextView deviceNameView = new TextView(this);
-            String deviceName = "Unknown Device";
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                deviceName = device.getName() != null ? device.getName() : "Unknown Device";
+        try {
+            if (!bluetoothManager.isConnected()) {
+                showToast("Not connected to device");
+                addToLog("Sync failed: Not connected to device");
+                return;
             }
-            deviceNameView.setText("Device: " + deviceName);
-            deviceNameView.setTextSize(16);
-            deviceNameView.setTextColor(getResources().getColor(R.color.text_primary));
 
-            TextView deviceAddress = new TextView(this);
-            deviceAddress.setText("Address: " + device.getAddress());
-            deviceAddress.setTextSize(14);
-            deviceAddress.setTextColor(getResources().getColor(R.color.text_secondary));
+            new AlertDialog.Builder(this)
+                    .setTitle("Sync Alarms")
+                    .setMessage("Do you want to sync all alarms to the Arduino device?")
+                    .setPositiveButton("Yes", (dialog, which) -> {
+                        try {
+                            addToLog("Starting alarm synchronization...");
+                            showToast("Syncing alarms...");
+                            bluetoothManager.syncAllAlarms(medicineManager.getAllMedicines());
+                            addToLog("Sync command sent to device");
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error syncing alarms: " + e.getMessage(), e);
+                            showToast("Error syncing: " + e.getMessage());
+                            addToLog("Sync failed: " + e.getMessage());
+                        }
+                    })
+                    .setNegativeButton("No", (dialog, which) -> {
+                        addToLog("Alarm sync cancelled by user");
+                    })
+                    .show();
 
-            deviceInfo.addView(deviceNameView);
-            deviceInfo.addView(deviceAddress);
+        } catch (Exception e) {
+            Log.e(TAG, "Error in syncAlarms: " + e.getMessage(), e);
+            showToast("Error: " + e.getMessage());
+            addToLog("Sync error: " + e.getMessage());
         }
     }
 
-    private void clearDeviceInfo() {
-        deviceInfo.removeAllViews();
-        emptyDeviceInfoText.setVisibility(View.VISIBLE);
+    private void requestStatus() {
+        try {
+            if (bluetoothManager.isConnected()) {
+                addToLog("Requesting medicine status from device...");
+                bluetoothManager.requestMedicineStatus();
+                showToast("Status request sent");
+            } else {
+                showToast("Not connected to device");
+                addToLog("Status request failed: Not connected");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error requesting status: " + e.getMessage(), e);
+            showToast("Error: " + e.getMessage());
+            addToLog("Status request error: " + e.getMessage());
+        }
+    }
+
+    private void requestHistory() {
+        try {
+            if (bluetoothManager.isConnected()) {
+                addToLog("Requesting medicine history from device...");
+                bluetoothManager.requestMedicineHistory();
+                showToast("History request sent");
+            } else {
+                showToast("Not connected to device");
+                addToLog("History request failed: Not connected");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error requesting history: " + e.getMessage(), e);
+            showToast("Error: " + e.getMessage());
+            addToLog("History request error: " + e.getMessage());
+        }
+    }
+
+    private void updateConnectionStatus(boolean connected, String deviceName) {
+        try {
+            if (connected) {
+                String displayName = deviceName.isEmpty() ? "Device" : deviceName;
+                connectionStatus.setText("Connected to " + displayName);
+                connectionStatus.setBackgroundResource(R.drawable.status_connected_bg);
+                disconnectBtn.setEnabled(true);
+                syncAlarmsBtn.setEnabled(true);
+                requestStatusBtn.setEnabled(true);
+                requestHistoryBtn.setEnabled(true);
+                showToast("Connected to " + displayName);
+                addToLog("Successfully connected to " + displayName);
+            } else {
+                connectionStatus.setText("Disconnected");
+                connectionStatus.setBackgroundResource(R.drawable.status_disconnected_bg);
+                disconnectBtn.setEnabled(false);
+                syncAlarmsBtn.setEnabled(false);
+                requestStatusBtn.setEnabled(false);
+                requestHistoryBtn.setEnabled(false);
+                if (!deviceName.isEmpty()) {
+                    showToast("Disconnected");
+                    addToLog("Disconnected from device");
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating connection status: " + e.getMessage(), e);
+        }
     }
 
     private void addToLog(String message) {
-        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-        String timestamp = sdf.format(new Date());
-        String logEntry = timestamp + " - " + message + "\n";
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+            String timestamp = sdf.format(new Date());
+            String logEntry = timestamp + " - " + message + "\n";
 
-        logTextView.append(logEntry);
+            runOnUiThread(() -> {
+                try {
+                    if (logTextView != null) {
+                        logTextView.append(logEntry);
 
-        // Scroll to bottom
-        logScrollView.post(() -> logScrollView.fullScroll(View.FOCUS_DOWN));
-    }
-
-    private void processReceivedData(String data) {
-        // Process data from Arduino
-        if (data.startsWith("STATUS:")) {
-            // Format: STATUS:MedicineName:Quantity
-            String[] parts = data.split(":");
-            if (parts.length >= 3) {
-                String medicineName = parts[1];
-                String quantity = parts[2];
-                addToLog("Medicine status: " + medicineName + " - " + quantity + " pills left");
-            }
-        } else if (data.startsWith("HISTORY:")) {
-            // Format: HISTORY:MedicineName:Time:Date
-            String[] parts = data.split(":");
-            if (parts.length >= 4) {
-                String medicineName = parts[1];
-                String time = parts[2];
-                String date = parts[3];
-                addToLog("Medicine taken: " + medicineName + " at " + time + " on " + date);
-
-                // Add to medicine log
-                MedicineLogEntry entry = new MedicineLogEntry(medicineName, time, date);
-                medicineManager.addLogEntry(entry);
-            }
-        } else if (data.startsWith("ALARM_SET:")) {
-            // Format: ALARM_SET:MedicineName:Time
-            String[] parts = data.split(":");
-            if (parts.length >= 3) {
-                String medicineName = parts[1];
-                String time = parts[2];
-                addToLog("Alarm set on Arduino: " + medicineName + " at " + time);
-            }
-        } else if (data.equals("SYNC_COMPLETE")) {
-            addToLog("Alarm synchronization complete");
-            Toast.makeText(this, "Alarms synchronized successfully", Toast.LENGTH_SHORT).show();
-        } else {
-            // Generic message
-            addToLog("Arduino: " + data);
+                        // Scroll to bottom
+                        if (logScrollView != null) {
+                            logScrollView.post(() -> logScrollView.fullScroll(View.FOCUS_DOWN));
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error appending to log: " + e.getMessage(), e);
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding to log: " + e.getMessage(), e);
         }
     }
 
-    // BluetoothConnectionListener implementation
-    @Override
-    public void onConnectionStatusChanged(boolean connected, String deviceName) {
-        runOnUiThread(() -> {
-            updateUI();
-            if (connected) {
-                addToLog("Connected to " + deviceName);
-                Toast.makeText(this, "Connected to " + deviceName, Toast.LENGTH_SHORT).show();
+    private void processReceivedData(String data) {
+        try {
+            if (data.startsWith("STATUS:")) {
+                String[] parts = data.split(":");
+                if (parts.length >= 3) {
+                    String medicineName = parts[1];
+                    String quantity = parts[2];
+                    addToLog("Medicine status: " + medicineName + " - " + quantity + " pills left");
+                    showToast("Status: " + medicineName + " - " + quantity + " pills");
+                }
+            } else if (data.startsWith("HISTORY:")) {
+                String[] parts = data.split(":");
+                if (parts.length >= 4) {
+                    String medicineName = parts[1];
+                    String time = parts[2];
+                    String date = parts[3];
+                    addToLog("Medicine taken: " + medicineName + " at " + time + " on " + date);
+
+                    MedicineLogEntry entry = new MedicineLogEntry(medicineName, time, date);
+                    medicineManager.addLogEntry(entry);
+                    showToast("History: " + medicineName + " taken at " + time);
+                }
+            } else if (data.equals("SYNC_COMPLETE")) {
+                addToLog("Alarm synchronization completed successfully");
+                showToast("Alarms synchronized successfully");
+            } else if (data.equals("ALARM_SET")) {
+                addToLog("Alarm set on device");
+                showToast("Alarm set successfully");
             } else {
-                addToLog("Disconnected");
-                Toast.makeText(this, "Disconnected", Toast.LENGTH_SHORT).show();
+                addToLog("Device response: " + data);
             }
-        });
+        } catch (Exception e) {
+            Log.e(TAG, "Error processing received data: " + e.getMessage(), e);
+            addToLog("Error processing data: " + e.getMessage());
+        }
     }
 
-    @Override
-    public void onDataReceived(String data) {
-        runOnUiThread(() -> {
-            addToLog("Received: " + data);
-            processReceivedData(data);
-        });
-    }
-
-    @Override
-    public void onError(String error) {
-        runOnUiThread(() -> {
-            addToLog("Error: " + error);
-            Toast.makeText(this, "Error: " + error, Toast.LENGTH_LONG).show();
-        });
+    private void showToast(String message) {
+        try {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing toast: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -446,9 +600,13 @@ public class BluetoothActivity extends AppCompatActivity implements BluetoothMan
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
-        if (bluetoothManager != null) {
-            bluetoothManager.setConnectionListener(null);
+        try {
+            super.onDestroy();
+            if (bluetoothManager != null) {
+                bluetoothManager.setConnectionListener(null);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onDestroy: " + e.getMessage(), e);
         }
     }
 }

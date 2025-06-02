@@ -6,6 +6,9 @@
     android:layout_height="match_parent">
 
     <!-- Main content -->
+
+
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -18,8 +21,21 @@
             android:layout_height="?attr/actionBarSize"
             android:background="@color/primary_green"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-            app:title="Smart Medicine Dispenser"
-            app:titleTextColor="@android:color/white" />
+            app:title=""
+            app:titleTextColor="@android:color/white">
+
+            <TextView
+                android:id="@+id/toolbar_title"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="Medi-यन्त्र"
+                android:textColor="@android:color/white"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:ellipsize="end"
+                android:maxLines="1" />
+        </androidx.appcompat.widget.Toolbar>
 
         <!-- Content area -->
         <ScrollView

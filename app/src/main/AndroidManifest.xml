@@ -1,48 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.smartmedicine.dispenser">
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Bluetooth permissions for Android 11 and below -->
-    <uses-permission android:name="android.permission.BLUETOOTH"
-        android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
-        android:maxSdkVersion="30" />
-
-    <!-- Bluetooth permissions for Android 12+ -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-
-    <!-- Location permissions -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Bluetooth permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <!-- For Android 12+ -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <!-- Alarm permissions -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_logo"
         android:label="@string/app_name"
-        android:theme="@style/Theme.SmartMedicineDispenser">
+
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SmartMedicineDispenser"
+        tools:targetApi="31">
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.SmartMedicineDispenser.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <activity android:name=".SetAlarmActivity" />
-        <activity android:name=".MedicineLogActivity" />
-        <activity android:name=".BluetoothActivity" />
+        <activity
+            android:name=".SetAlarmActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:label="Set Medicine Alarm"
+            android:theme="@style/Theme.SmartMedicineDispenser.NoActionBar" />
 
-        <!-- Alarm receiver -->
-        <receiver android:name=".AlarmReceiver" />
+        <activity
+            android:name=".MedicineLogActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:label="Medicine History"
+            android:theme="@style/Theme.SmartMedicineDispenser.NoActionBar" />
+
+        <activity
+            android:name=".BluetoothActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:label="Bluetooth Connection"
+            android:theme="@style/Theme.SmartMedicineDispenser.NoActionBar" />
+
+        <receiver android:name=".AlarmReceiver"
+            android:exported="false" />
 
     </application>
+
 </manifest>

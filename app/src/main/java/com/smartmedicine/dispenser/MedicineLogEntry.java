@@ -2,54 +2,51 @@ package com.smartmedicine.dispenser;
 
 public class MedicineLogEntry {
     private String medicineName;
-    private String takenTime;
-    private String takenDate;
-    private long timestamp;
+    private String time;
+    private String date;
 
-    public MedicineLogEntry(String medicineName, String takenTime, String takenDate) {
-        this.medicineName = medicineName;
-        this.takenTime = takenTime;
-        this.takenDate = takenDate;
-        this.timestamp = System.currentTimeMillis();
+    public MedicineLogEntry() {
+        // Default constructor for Gson
     }
 
-    public MedicineLogEntry(String medicineName, String takenTime, String takenDate, long timestamp) {
+    public MedicineLogEntry(String medicineName, String time, String date) {
         this.medicineName = medicineName;
-        this.takenTime = takenTime;
-        this.takenDate = takenDate;
-        this.timestamp = timestamp;
+        this.time = time;
+        this.date = date;
     }
 
-    // Getters and setters
+    // Getter methods
     public String getMedicineName() {
         return medicineName;
     }
 
+    public String getTime() {
+        return time;
+    }
+
+    public String getDate() {
+        return date;
+    }
+
+    // Setter methods
     public void setMedicineName(String medicineName) {
         this.medicineName = medicineName;
     }
 
-    public String getTakenTime() {
-        return takenTime;
+    public void setTime(String time) {
+        this.time = time;
     }
 
-    public void setTakenTime(String takenTime) {
-        this.takenTime = takenTime;
+    public void setDate(String date) {
+        this.date = date;
     }
 
-    public String getTakenDate() {
-        return takenDate;
-    }
-
-    public void setTakenDate(String takenDate) {
-        this.takenDate = takenDate;
-    }
-
-    public long getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(long timestamp) {
-        this.timestamp = timestamp;
+    @Override
+    public String toString() {
+        return "MedicineLogEntry{" +
+                "medicineName='" + medicineName + '\'' +
+                ", time='" + time + '\'' +
+                ", date='" + date + '\'' +
+                '}';
     }
 }

@@ -1,11 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Primary Colors -->
     <color name="primary_green">#4CAF50</color>
     <color name="primary_green_dark">#388E3C</color>
+    <color name="primary_green_light">#C8E6C9</color>
+
+    <!-- Accent Colors -->
+    <color name="accent_color">#FF5722</color>
     <color name="accent_blue">#2196F3</color>
-    <color name="warning_orange">#FF9800</color>
-    <color name="background_gray">#F5F5F5</color>
+    <color name="accent_blue_dark">#1976D2</color>
+    <color name="accent_blue_light">#BBDEFB</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_white">#FFFFFF</color>
+    <color name="text_black">#000000</color>
+
+    <!-- Background Colors -->
+    <color name="background_color">#FAFAFA</color>
     <color name="card_background">#FFFFFF</color>
-    <color name="text_primary">#333333</color>
-    <color name="text_secondary">#666666</color>
+    <color name="divider_color">#BDBDBD</color>
+    <color name="background_gray">#F5F5F5</color>
+
+    <!-- Status Colors -->
+    <color name="status_connected">#4CAF50</color>
+    <color name="status_disconnected">#F44336</color>
+    <color name="status_warning">#FF9800</color>
+
+    <!-- Button Colors -->
+    <color name="button_primary">#4CAF50</color>
+    <color name="button_secondary">#757575</color>
+    <color name="button_danger">#F44336</color>
+    <color name="button_warning">#FF9800</color>
+    <color name="button_info">#2196F3</color>
+
+    <!-- Gray Scale -->
+    <color name="light_gray">#F5F5F5</color>
+    <color name="medium_gray">#E0E0E0</color>
+    <color name="dark_gray">#424242</color>
+
+    <!-- Material Design Colors -->
+    <color name="colorPrimary">#4CAF50</color>
+    <color name="colorPrimaryDark">#388E3C</color>
+    <color name="colorAccent">#FF5722</color>
 </resources>
