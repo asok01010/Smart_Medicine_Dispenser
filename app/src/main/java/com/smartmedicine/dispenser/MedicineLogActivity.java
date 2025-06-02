@@ -1,133 +1,161 @@
 package com.smartmedicine.dispenser;
 
-import android.graphics.Typeface;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.cardview.widget.CardView;
+import androidx.core.content.ContextCompat;
 
 import java.util.List;
 
 public class MedicineLogActivity extends AppCompatActivity {
 
+    private static final String TAG = "MedicineLogActivity";
+
     private LinearLayout logContainer;
-    private TextView emptyStateText;
+    private TextView emptyLogText;
     private MedicineManager medicineManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_medicine_log);
 
-        initViews();
-        setupToolbar();
+        try {
+            setContentView(R.layout.activity_medicine_log);
 
-        medicineManager = MedicineManager.getInstance(this);
-        updateLogDisplay();
+            // Setup toolbar
+            Toolbar toolbar = findViewById(R.id.toolbar);
+            setSupportActionBar(toolbar);
+            if (getSupportActionBar() != null) {
+                getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+                getSupportActionBar().setTitle("Medicine History");
+            }
+
+            // Initialize views
+            logContainer = findViewById(R.id.log_container);
+            emptyLogText = findViewById(R.id.empty_log_text);
+
+            // Initialize medicine manager
+            medicineManager = MedicineManager.getInstance(this);
+
+            // Load medicine logs
+            loadMedicineLogs();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onCreate: " + e.getMessage(), e);
+            Toast.makeText(this, "Error loading medicine log: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            finish();
+        }
     }
 
-    private void initViews() {
-        logContainer = findViewById(R.id.log_container);
-        emptyStateText = findViewById(R.id.empty_state_text);
-    }
+    private void loadMedicineLogs() {
+        try {
+            // Clear existing views
+            logContainer.removeAllViews();
 
-    private void setupToolbar() {
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setTitle("Medicine Log");
-    }
+            // Get medicine log entries
+            List<MedicineLogEntry> logEntries = medicineManager.getMedicineLogEntries();
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        updateLogDisplay();
-    }
+            if (logEntries == null || logEntries.isEmpty()) {
+                // Show empty message
+                logContainer.addView(emptyLogText);
+                emptyLogText.setVisibility(View.VISIBLE);
+            } else {
+                // Hide empty message
+                emptyLogText.setVisibility(View.GONE);
 
-    private void updateLogDisplay() {
-        List<MedicineLogEntry> logEntries = medicineManager.getMedicineLog();
-
-        if (logEntries.isEmpty()) {
-            emptyStateText.setVisibility(View.VISIBLE);
-            // Hide any existing log cards
-            for (int i = logContainer.getChildCount() - 1; i >= 0; i--) {
-                View child = logContainer.getChildAt(i);
-                if (child instanceof CardView) {
-                    logContainer.removeView(child);
+                // Add log entries
+                for (MedicineLogEntry entry : logEntries) {
+                    addLogEntryView(entry);
                 }
             }
-        } else {
-            emptyStateText.setVisibility(View.GONE);
-            displayLogEntries(logEntries);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading medicine logs: " + e.getMessage(), e);
+            Toast.makeText(this, "Error loading logs: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+
+            // Show empty message as fallback
+            logContainer.removeAllViews();
+            logContainer.addView(emptyLogText);
+            emptyLogText.setVisibility(View.VISIBLE);
         }
     }
 
-    private void displayLogEntries(List<MedicineLogEntry> logEntries) {
-        // Clear existing log cards
-        for (int i = logContainer.getChildCount() - 1; i >= 0; i--) {
-            View child = logContainer.getChildAt(i);
-            if (child instanceof CardView) {
-                logContainer.removeView(child);
-            }
+    private void addLogEntryView(MedicineLogEntry entry) {
+        try {
+            // Create card view
+            CardView cardView = new CardView(this);
+            LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            cardParams.setMargins(0, 0, 0, 16);
+            cardView.setLayoutParams(cardParams);
+            cardView.setCardElevation(4);
+            cardView.setRadius(8);
+            cardView.setCardBackgroundColor(ContextCompat.getColor(this, R.color.card_background));
+
+            // Create content layout
+            LinearLayout contentLayout = new LinearLayout(this);
+            contentLayout.setOrientation(LinearLayout.VERTICAL);
+            contentLayout.setPadding(16, 16, 16, 16);
+
+            // Medicine name
+            TextView nameText = new TextView(this);
+            nameText.setText(entry.getMedicineName());
+            nameText.setTextSize(18);
+            nameText.setTextColor(ContextCompat.getColor(this, R.color.primary_green));
+            nameText.setTypeface(null, android.graphics.Typeface.BOLD);
+
+            // Time and date
+            TextView timeText = new TextView(this);
+            timeText.setText("Taken at: " + entry.getTime());
+            timeText.setTextSize(14);
+            timeText.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+            timeText.setPadding(0, 8, 0, 0);
+
+            TextView dateText = new TextView(this);
+            dateText.setText("Date: " + entry.getDate());
+            dateText.setTextSize(14);
+            dateText.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+            dateText.setPadding(0, 4, 0, 0);
+
+            // Add views to content layout
+            contentLayout.addView(nameText);
+            contentLayout.addView(timeText);
+            contentLayout.addView(dateText);
+
+            // Add content to card
+            cardView.addView(contentLayout);
+
+            // Add card to container
+            logContainer.addView(cardView);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding log entry view: " + e.getMessage(), e);
         }
-
-        // Add log entry cards
-        for (MedicineLogEntry entry : logEntries) {
-            CardView logCard = createLogEntryCard(entry);
-            logContainer.addView(logCard);
-        }
-    }
-
-    private CardView createLogEntryCard(MedicineLogEntry entry) {
-        CardView cardView = new CardView(this);
-        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        cardParams.setMargins(0, 0, 0, 16);
-        cardView.setLayoutParams(cardParams);
-        cardView.setCardElevation(2);
-        cardView.setRadius(8);
-        cardView.setCardBackgroundColor(getResources().getColor(R.color.background_gray));
-
-        LinearLayout cardContent = new LinearLayout(this);
-        cardContent.setOrientation(LinearLayout.VERTICAL);
-        cardContent.setPadding(20, 20, 20, 20);
-
-        // Medicine name and "taken" text
-        TextView medicineText = new TextView(this);
-        medicineText.setText(entry.getMedicineName() + " taken");
-        medicineText.setTextSize(16);
-        medicineText.setTextColor(getResources().getColor(R.color.text_primary));
-        medicineText.setTypeface(null, Typeface.BOLD); // Corrected line
-
-        // Date and time
-        TextView timeText = new TextView(this);
-        timeText.setText("at " + entry.getTakenTime() + " on " + entry.getTakenDate());
-        timeText.setTextSize(14);
-        timeText.setTextColor(getResources().getColor(R.color.text_secondary));
-
-        LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        timeParams.setMargins(0, 8, 0, 0);
-        timeText.setLayoutParams(timeParams);
-
-        cardContent.addView(medicineText);
-        cardContent.addView(timeText);
-        cardView.addView(cardContent);
-
-        return cardView;
     }
 
     @Override
     public boolean onSupportNavigateUp() {
         onBackPressed();
         return true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        try {
+            // Reload logs when returning to activity
+            loadMedicineLogs();
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onResume: " + e.getMessage(), e);
+        }
     }
 }

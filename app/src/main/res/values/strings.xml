@@ -1,5 +1,66 @@
 <resources>
-    <string name="app_name">Smart Medicine Dispenser</string>
+    <string name="app_name">Medi Yentra</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string name="nav_header_title">Medi Yentra</string>
+    <string name="nav_header_subtitle">Your Smart Medicine Companion</string>
+    <string name="nav_header_desc">Navigation header</string>
+    <string name="action_settings">Settings</string>
+
+    <string name="menu_home">Home</string>
+    <string name="menu_set_alarm">Set Alarm</string>
+    <string name="menu_medicine_log">Medicine Log</string>
+    <string name="menu_bluetooth">Bluetooth</string>
+    <string name="menu_settings">Settings</string>
+
+    <!-- App description strings -->
+    <string name="app_description">Smart Medicine Dispenser System</string>
+    <string name="welcome_message">Welcome to Medi Yentra</string>
+    <string name="tagline">Your Health, Our Priority</string>
+
+    <!-- Home screen strings -->
+    <string name="next_medicine">Next Medicine</string>
+    <string name="no_medicine_scheduled">No medicine scheduled</string>
+    <string name="medicine_scheduled_for">Medicine scheduled for</string>
+    <string name="medicine_name">Medicine Name</string>
+    <string name="medicine_time">Time</string>
+    <string name="medicine_quantity">Quantity</string>
+
+    <!-- Set Alarm screen strings -->
+    <string name="set_alarm">Set Alarm</string>
+    <string name="enter_medicine_name">Enter medicine name</string>
+    <string name="quantity_pills">Quantity (pills per dose)</string>
+    <string name="select_time">Select Time</string>
+    <string name="set_alarm_button">Set Alarm</string>
+    <string name="next_medicine_button">Next Medicine</string>
+    <string name="clear_all_alarms">Clear All Alarms</string>
+    <string name="scheduled_alarms">Scheduled Alarms</string>
+    <string name="no_alarms_scheduled">No alarms scheduled</string>
+
+    <!-- Medicine Log screen strings -->
+    <string name="medicine_log">Medicine Log</string>
+    <string name="no_medicine_logs">No medicine history available</string>
+
+    <!-- Bluetooth screen strings -->
+    <string name="bluetooth_connection">Bluetooth Connection</string>
+    <string name="scan_devices">Scan Devices</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="sync_alarms">Sync Alarms</string>
+    <string name="get_status">Get Status</string>
+    <string name="get_history">Get History</string>
+    <string name="available_devices">Available Devices</string>
+    <string name="no_devices_found">No devices found. Click \'Scan Devices\' to search.</string>
+    <string name="connected_device_info">Connected Device Info</string>
+    <string name="no_device_connected">No device connected</string>
+    <string name="communication_log">Communication Log</string>
+
+    <!-- Settings screen strings -->
+    <string name="settings">Settings</string>
+    <string name="notification_settings">Notification Settings</string>
+    <string name="enable_notifications">Enable Notifications</string>
+    <string name="notification_sound">Notification Sound</string>
+    <string name="vibration">Vibration</string>
+    <string name="about">About</string>
+    <string name="version">Version 1.0</string>
+    <string name="developers">Developed by Smart Medicine Team</string>
 </resources>
