@@ -1,6 +1,9 @@
 package com.smartmedicine.dispenser;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.util.Log;
 
@@ -12,7 +15,6 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -24,12 +26,14 @@ public class MedicineManager {
     private static final String LOG_ENTRIES_KEY = "log_entries";
 
     private static MedicineManager instance;
+    private Context context; // Added context for AlarmManager
     private SharedPreferences sharedPreferences;
     private Gson gson;
     private List<Medicine> medicines;
     private List<MedicineLogEntry> logEntries;
 
     private MedicineManager(Context context) {
+        this.context = context.getApplicationContext(); // Store context
         sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         gson = new Gson();
         medicines = new ArrayList<>();
@@ -45,13 +49,123 @@ public class MedicineManager {
         return instance;
     }
 
-    // Medicine management methods
+    // ==================== ALARM SCHEDULING METHODS ====================
+
+    public void scheduleAlarm(String medicineName, String timeString, int quantity) {
+        try {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+
+            // Parse time
+            String[] timeParts = timeString.split(":");
+            int hour = Integer.parseInt(timeParts[0]);
+            int minute = Integer.parseInt(timeParts[1]);
+
+            // Create calendar for alarm time
+            Calendar calendar = Calendar.getInstance();
+            calendar.set(Calendar.HOUR_OF_DAY, hour);
+            calendar.set(Calendar.MINUTE, minute);
+            calendar.set(Calendar.SECOND, 0);
+            calendar.set(Calendar.MILLISECOND, 0);
+
+            // If time has passed today, schedule for tomorrow
+            if (calendar.getTimeInMillis() <= System.currentTimeMillis()) {
+                calendar.add(Calendar.DAY_OF_MONTH, 1);
+            }
+
+            // Create intent for alarm
+            Intent intent = new Intent(context, AlarmReceiver.class);
+            intent.putExtra("medicine_name", medicineName);
+            intent.putExtra("quantity", quantity);
+            intent.putExtra("time", timeString);
+
+            // CRITICAL: Create unique request code for each medicine + time combination
+            String uniqueKey = medicineName + "_" + timeString;
+            int requestCode = Math.abs(uniqueKey.hashCode()); // Ensure positive number
+
+            // Create pending intent with unique request code
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    requestCode,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            // Schedule repeating alarm (daily)
+            alarmManager.setRepeating(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.getTimeInMillis(),
+                    AlarmManager.INTERVAL_DAY, // Repeat daily
+                    pendingIntent
+            );
+
+            Log.d(TAG, "Alarm scheduled for " + medicineName + " at " + timeString +
+                    " with requestCode: " + requestCode);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error scheduling alarm: " + e.getMessage(), e);
+        }
+    }
+
+    public void cancelAlarm(String medicineName, String timeString) {
+        try {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+
+            Intent intent = new Intent(context, AlarmReceiver.class);
+
+            // Use same unique key to cancel specific alarm
+            String uniqueKey = medicineName + "_" + timeString;
+            int requestCode = Math.abs(uniqueKey.hashCode());
+
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    requestCode,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            alarmManager.cancel(pendingIntent);
+
+            Log.d(TAG, "Alarm cancelled for " + medicineName + " at " + timeString);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error cancelling alarm: " + e.getMessage(), e);
+        }
+    }
+
+    // Method to schedule all alarms for a medicine
+    public void scheduleAllAlarmsForMedicine(Medicine medicine) {
+        List<String> alarmTimes = medicine.getAlarmTimes();
+        if (alarmTimes != null) {
+            for (String time : alarmTimes) {
+                scheduleAlarm(medicine.getName(), time, 1); // 1 pill per alarm
+            }
+            Log.d(TAG, "Scheduled " + alarmTimes.size() + " alarms for " + medicine.getName());
+        }
+    }
+
+    // Method to cancel all alarms for a medicine
+    public void cancelAllAlarmsForMedicine(Medicine medicine) {
+        List<String> alarmTimes = medicine.getAlarmTimes();
+        if (alarmTimes != null) {
+            for (String time : alarmTimes) {
+                cancelAlarm(medicine.getName(), time);
+            }
+            Log.d(TAG, "Cancelled all alarms for " + medicine.getName());
+        }
+    }
+
+    // ==================== MEDICINE MANAGEMENT METHODS ====================
+
     public void addMedicine(Medicine medicine) {
         try {
             if (medicine != null) {
                 medicines.add(medicine);
                 saveMedicines();
-                Log.d(TAG, "Medicine added: " + medicine.getName());
+
+                // Schedule alarms for the new medicine
+                scheduleAllAlarmsForMedicine(medicine);
+
+                Log.d(TAG, "Medicine added and alarms scheduled: " + medicine.getName());
             }
         } catch (Exception e) {
             Log.e(TAG, "Error adding medicine: " + e.getMessage(), e);
@@ -61,6 +175,12 @@ public class MedicineManager {
     public void saveMedicine(Medicine medicine) {
         try {
             if (medicine != null) {
+                // Cancel existing alarms for this medicine first
+                Medicine existingMedicine = getMedicineByName(medicine.getName());
+                if (existingMedicine != null) {
+                    cancelAllAlarmsForMedicine(existingMedicine);
+                }
+
                 // Check if medicine with same name already exists
                 boolean exists = false;
                 for (int i = 0; i < medicines.size(); i++) {
@@ -78,7 +198,11 @@ public class MedicineManager {
                 }
 
                 saveMedicines();
-                Log.d(TAG, "Medicine saved: " + medicine.getName());
+
+                // Schedule new alarms
+                scheduleAllAlarmsForMedicine(medicine);
+
+                Log.d(TAG, "Medicine saved and alarms scheduled: " + medicine.getName());
             }
         } catch (Exception e) {
             Log.e(TAG, "Error saving medicine: " + e.getMessage(), e);
@@ -88,8 +212,11 @@ public class MedicineManager {
     public void removeMedicine(Medicine medicine) {
         try {
             if (medicine != null && medicines.remove(medicine)) {
+                // Cancel all alarms for this medicine
+                cancelAllAlarmsForMedicine(medicine);
+
                 saveMedicines();
-                Log.d(TAG, "Medicine removed: " + medicine.getName());
+                Log.d(TAG, "Medicine removed and alarms cancelled: " + medicine.getName());
             }
         } catch (Exception e) {
             Log.e(TAG, "Error removing medicine: " + e.getMessage(), e);
@@ -100,9 +227,17 @@ public class MedicineManager {
         try {
             int index = medicines.indexOf(oldMedicine);
             if (index != -1) {
+                // Cancel old alarms
+                cancelAllAlarmsForMedicine(oldMedicine);
+
+                // Update medicine
                 medicines.set(index, newMedicine);
                 saveMedicines();
-                Log.d(TAG, "Medicine updated: " + newMedicine.getName());
+
+                // Schedule new alarms
+                scheduleAllAlarmsForMedicine(newMedicine);
+
+                Log.d(TAG, "Medicine updated and alarms rescheduled: " + newMedicine.getName());
             }
         } catch (Exception e) {
             Log.e(TAG, "Error updating medicine: " + e.getMessage(), e);
@@ -119,6 +254,9 @@ public class MedicineManager {
                 if (medicine.getName().equals(medicineName)) {
                     List<String> alarmTimes = medicine.getAlarmTimes();
                     if (alarmTimes != null && alarmTimes.remove(time)) {
+                        // Cancel the specific alarm
+                        cancelAlarm(medicineName, time);
+
                         saveMedicines();
                         Log.d(TAG, "Alarm time removed: " + time + " for " + medicineName);
 
@@ -137,6 +275,31 @@ public class MedicineManager {
         }
     }
 
+    public void addAlarmTimeToMedicine(String medicineName, String time) {
+        try {
+            if (medicineName == null || time == null) {
+                return;
+            }
+
+            for (Medicine medicine : medicines) {
+                if (medicine.getName().equals(medicineName)) {
+                    medicine.addAlarmTime(time);
+                    saveMedicines();
+
+                    // Schedule the new alarm
+                    scheduleAlarm(medicineName, time, 1);
+
+                    Log.d(TAG, "Alarm time added and scheduled: " + time + " for " + medicineName);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding alarm time to medicine: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== QUANTITY MANAGEMENT ====================
+
     public void updateMedicineQuantity(String medicineName, int newQuantity) {
         try {
             if (medicineName == null || newQuantity < 0) {
@@ -149,12 +312,8 @@ public class MedicineManager {
                     saveMedicines();
                     Log.d(TAG, "Medicine quantity updated: " + medicineName + " -> " + newQuantity);
 
-                    // If quantity reaches 0, optionally remove the medicine or keep it with 0 quantity
                     if (newQuantity == 0) {
                         Log.w(TAG, "Medicine " + medicineName + " is out of stock!");
-                        // You can choose to remove the medicine or keep it with 0 quantity
-                        // medicines.remove(medicine);
-                        // saveMedicines();
                     }
                     break;
                 }
@@ -164,7 +323,6 @@ public class MedicineManager {
         }
     }
 
-    // New method to decrease medicine quantity when alarm triggers
     public boolean decreaseMedicineQuantity(String medicineName) {
         try {
             if (medicineName == null) {
@@ -202,6 +360,8 @@ public class MedicineManager {
         }
     }
 
+    // ==================== GETTER METHODS ====================
+
     public Medicine getMedicineByName(String medicineName) {
         try {
             if (medicineName == null) {
@@ -225,9 +385,14 @@ public class MedicineManager {
 
     public void clearAllMedicines() {
         try {
+            // Cancel all alarms first
+            for (Medicine medicine : medicines) {
+                cancelAllAlarmsForMedicine(medicine);
+            }
+
             medicines.clear();
             saveMedicines();
-            Log.d(TAG, "All medicines cleared");
+            Log.d(TAG, "All medicines and alarms cleared");
         } catch (Exception e) {
             Log.e(TAG, "Error clearing medicines: " + e.getMessage(), e);
         }
@@ -303,7 +468,8 @@ public class MedicineManager {
         }
     }
 
-    // Medicine log management methods
+    // ==================== LOG MANAGEMENT ====================
+
     public void addLogEntry(MedicineLogEntry entry) {
         try {
             if (entry != null) {
@@ -330,7 +496,99 @@ public class MedicineManager {
         }
     }
 
-    // Save and load methods
+    public void recordMedicineTaken(String medicineName) {
+        try {
+            SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+            SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
+
+            Date now = new Date();
+            String time = timeFormat.format(now);
+            String date = dateFormat.format(now);
+
+            // Decrease medicine quantity
+            boolean quantityDecreased = decreaseMedicineQuantity(medicineName);
+
+            // Create log entry
+            MedicineLogEntry entry = new MedicineLogEntry(medicineName, time, date);
+            addLogEntry(entry);
+
+            if (quantityDecreased) {
+                Log.d(TAG, "Medicine taken and quantity decreased: " + medicineName);
+            } else {
+                Log.w(TAG, "Medicine taken but quantity not decreased (may be out of stock): " + medicineName);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error recording medicine taken: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== UTILITY METHODS ====================
+
+    public boolean hasMedicine(String medicineName) {
+        try {
+            if (medicineName == null) {
+                return false;
+            }
+
+            for (Medicine medicine : medicines) {
+                if (medicine.getName().equals(medicineName)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking if medicine exists: " + e.getMessage(), e);
+        }
+        return false;
+    }
+
+    public List<String> getAllAlarmTimes() {
+        List<String> allTimes = new ArrayList<>();
+        try {
+            for (Medicine medicine : medicines) {
+                List<String> alarmTimes = medicine.getAlarmTimes();
+                if (alarmTimes != null) {
+                    for (String time : alarmTimes) {
+                        if (!allTimes.contains(time)) {
+                            allTimes.add(time);
+                        }
+                    }
+                }
+            }
+            Collections.sort(allTimes);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting all alarm times: " + e.getMessage(), e);
+        }
+        return allTimes;
+    }
+
+    public boolean isMedicineLowStock(String medicineName, int threshold) {
+        try {
+            Medicine medicine = getMedicineByName(medicineName);
+            if (medicine != null) {
+                return medicine.getQuantity() <= threshold;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking low stock: " + e.getMessage(), e);
+        }
+        return false;
+    }
+
+    public List<Medicine> getOutOfStockMedicines() {
+        List<Medicine> outOfStock = new ArrayList<>();
+        try {
+            for (Medicine medicine : medicines) {
+                if (medicine.getQuantity() <= 0) {
+                    outOfStock.add(medicine);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting out of stock medicines: " + e.getMessage(), e);
+        }
+        return outOfStock;
+    }
+
+    // ==================== PERSISTENCE METHODS ====================
+
     private void saveMedicines() {
         try {
             String json = gson.toJson(medicines);
@@ -348,6 +606,12 @@ public class MedicineManager {
                 List<Medicine> loadedMedicines = gson.fromJson(json, type);
                 if (loadedMedicines != null) {
                     medicines = loadedMedicines;
+
+                    // Reschedule all alarms after loading medicines
+                    for (Medicine medicine : medicines) {
+                        scheduleAllAlarmsForMedicine(medicine);
+                    }
+                    Log.d(TAG, "Medicines loaded and alarms rescheduled");
                 }
             }
         } catch (Exception e) {
@@ -379,117 +643,5 @@ public class MedicineManager {
             Log.e(TAG, "Error loading log entries: " + e.getMessage(), e);
             logEntries = new ArrayList<>();
         }
-    }
-
-    // Enhanced method to record medicine taken with quantity decrease
-    public void recordMedicineTaken(String medicineName) {
-        try {
-            SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
-            SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
-
-            Date now = new Date();
-            String time = timeFormat.format(now);
-            String date = dateFormat.format(now);
-
-            // Decrease medicine quantity
-            boolean quantityDecreased = decreaseMedicineQuantity(medicineName);
-
-            // Create log entry
-            MedicineLogEntry entry = new MedicineLogEntry(medicineName, time, date);
-            addLogEntry(entry);
-
-            if (quantityDecreased) {
-                Log.d(TAG, "Medicine taken and quantity decreased: " + medicineName);
-            } else {
-                Log.w(TAG, "Medicine taken but quantity not decreased (may be out of stock): " + medicineName);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error recording medicine taken: " + e.getMessage(), e);
-        }
-    }
-
-    // Utility methods for alarm management
-    public boolean hasMedicine(String medicineName) {
-        try {
-            if (medicineName == null) {
-                return false;
-            }
-
-            for (Medicine medicine : medicines) {
-                if (medicine.getName().equals(medicineName)) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error checking if medicine exists: " + e.getMessage(), e);
-        }
-        return false;
-    }
-
-    public void addAlarmTimeToMedicine(String medicineName, String time) {
-        try {
-            if (medicineName == null || time == null) {
-                return;
-            }
-
-            for (Medicine medicine : medicines) {
-                if (medicine.getName().equals(medicineName)) {
-                    medicine.addAlarmTime(time);
-                    saveMedicines();
-                    Log.d(TAG, "Alarm time added: " + time + " for " + medicineName);
-                    return;
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error adding alarm time to medicine: " + e.getMessage(), e);
-        }
-    }
-
-    public List<String> getAllAlarmTimes() {
-        List<String> allTimes = new ArrayList<>();
-        try {
-            for (Medicine medicine : medicines) {
-                List<String> alarmTimes = medicine.getAlarmTimes();
-                if (alarmTimes != null) {
-                    for (String time : alarmTimes) {
-                        if (!allTimes.contains(time)) {
-                            allTimes.add(time);
-                        }
-                    }
-                }
-            }
-            Collections.sort(allTimes);
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting all alarm times: " + e.getMessage(), e);
-        }
-        return allTimes;
-    }
-
-    // Method to check if medicine is low on stock
-    public boolean isMedicineLowStock(String medicineName, int threshold) {
-        try {
-            Medicine medicine = getMedicineByName(medicineName);
-            if (medicine != null) {
-                return medicine.getQuantity() <= threshold;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error checking low stock: " + e.getMessage(), e);
-        }
-        return false;
-    }
-
-    // Method to get medicines that are out of stock
-    public List<Medicine> getOutOfStockMedicines() {
-        List<Medicine> outOfStock = new ArrayList<>();
-        try {
-            for (Medicine medicine : medicines) {
-                if (medicine.getQuantity() <= 0) {
-                    outOfStock.add(medicine);
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting out of stock medicines: " + e.getMessage(), e);
-        }
-        return outOfStock;
     }
 }

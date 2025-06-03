@@ -20,9 +20,11 @@
     <!-- Background Colors -->
     <color name="background_color">#FAFAFA</color>
     <color name="card_background">#FFFFFF</color>
-    <color name="divider_color">#BDBDBD</color>
+    <color name="divider_color">#E0E0E0</color>
     <color name="background_gray">#F5F5F5</color>
     <color name="button_danger_bg">#F44336</color>
+
+
 
     <!-- Status Colors -->
     <color name="status_connected">#4CAF50</color>

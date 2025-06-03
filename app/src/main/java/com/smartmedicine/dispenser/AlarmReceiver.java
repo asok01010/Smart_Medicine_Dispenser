@@ -29,6 +29,9 @@ public class AlarmReceiver extends BroadcastReceiver {
                 // Get medicine manager instance
                 MedicineManager medicineManager = MedicineManager.getInstance(context);
 
+                // Send Bluetooth command to Arduino FIRST (before recording)
+                sendDispenseCommand(context, medicineName, quantity);
+
                 // Record that medicine was taken (this will decrease quantity and add log entry)
                 medicineManager.recordMedicineTaken(medicineName);
 
@@ -39,10 +42,26 @@ public class AlarmReceiver extends BroadcastReceiver {
                 // Create notification
                 createNotification(context, medicineName, quantity, remainingQuantity);
 
-                Log.d(TAG, "Medicine taken: " + medicineName + ", Remaining quantity: " + remainingQuantity);
+                Log.d(TAG, "Medicine alarm processed: " + medicineName + ", Remaining quantity: " + remainingQuantity);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error in alarm receiver: " + e.getMessage(), e);
+        }
+    }
+
+    private void sendDispenseCommand(Context context, String medicineName, int quantity) {
+        try {
+            // Get BluetoothManager instance and send dispense command
+            BluetoothManager bluetoothManager = BluetoothManager.getInstance();
+            if (bluetoothManager != null && bluetoothManager.isConnected()) {
+                String command = "DISPENSE:" + medicineName + ":" + quantity;
+                bluetoothManager.sendData(command);
+                Log.d(TAG, "Dispense command sent to Arduino: " + command);
+            } else {
+                Log.w(TAG, "Bluetooth not connected - cannot send dispense command");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error sending dispense command: " + e.getMessage(), e);
         }
     }
 
@@ -91,8 +110,9 @@ public class AlarmReceiver extends BroadcastReceiver {
                     .setAutoCancel(true)
                     .setDefaults(NotificationCompat.DEFAULT_ALL);
 
-            // Show notification
-            notificationManager.notify(NOTIFICATION_ID, builder.build());
+            // Show notification with unique ID to avoid overwriting
+            int uniqueNotificationId = (medicineName + System.currentTimeMillis()).hashCode();
+            notificationManager.notify(uniqueNotificationId, builder.build());
 
         } catch (Exception e) {
             Log.e(TAG, "Error creating notification: " + e.getMessage(), e);

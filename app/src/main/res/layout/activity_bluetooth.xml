@@ -31,22 +31,14 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Connection Status Section -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Bluetooth Connection"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/primary_green"
-                android:layout_marginBottom="16dp" />
-
+            <!-- Connection Status -->
             <TextView
                 android:id="@+id/connection_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Disconnected"
                 android:textSize="16sp"
+                android:textStyle="bold"
                 android:textColor="@android:color/white"
                 android:background="@drawable/status_disconnected_bg"
                 android:padding="12dp"
@@ -57,76 +49,75 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
+                android:orientation="vertical"
                 android:layout_marginBottom="16dp">
 
                 <Button
                     android:id="@+id/scan_btn"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Scan Devices"
+                    android:text="Scan for Devices"
                     android:background="@drawable/button_primary_bg"
                     android:textColor="@android:color/white"
-                    android:layout_marginEnd="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:padding="12dp" />
 
                 <Button
                     android:id="@+id/disconnect_btn"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:text="Disconnect"
                     android:background="@drawable/button_secondary_bg"
                     android:textColor="@android:color/white"
-                    android:enabled="false"
-                    android:layout_marginStart="8dp" />
-
-            </LinearLayout>
-
-            <!-- Action Buttons -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="24dp">
+                    android:layout_marginBottom="8dp"
+                    android:padding="12dp"
+                    android:enabled="false" />
 
                 <Button
                     android:id="@+id/sync_alarms_btn"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:text="Sync Alarms"
-                    android:background="@drawable/button_action_bg"
+                    android:background="@drawable/button_primary_bg"
                     android:textColor="@android:color/white"
-                    android:enabled="false"
-                    android:layout_marginEnd="4dp" />
+                    android:layout_marginBottom="8dp"
+                    android:padding="12dp"
+                    android:enabled="false" />
 
-                <Button
-                    android:id="@+id/request_status_btn"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Get Status"
-                    android:background="@drawable/button_action_bg"
-                    android:textColor="@android:color/white"
-                    android:enabled="false"
-                    android:layout_marginStart="4dp"
-                    android:layout_marginEnd="4dp" />
+                    android:orientation="horizontal">
 
-                <Button
-                    android:id="@+id/request_history_btn"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Get History"
-                    android:background="@drawable/button_action_bg"
-                    android:textColor="@android:color/white"
-                    android:enabled="false"
-                    android:layout_marginStart="4dp" />
+                    <Button
+                        android:id="@+id/request_status_btn"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Status"
+                        android:background="@drawable/button_secondary_bg"
+                        android:textColor="@android:color/white"
+                        android:layout_marginEnd="4dp"
+                        android:padding="12dp"
+                        android:enabled="false" />
+
+                    <Button
+                        android:id="@+id/request_history_btn"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="History"
+                        android:background="@drawable/button_secondary_bg"
+                        android:textColor="@android:color/white"
+                        android:layout_marginStart="4dp"
+                        android:padding="12dp"
+                        android:enabled="false" />
+
+                </LinearLayout>
 
             </LinearLayout>
 
-            <!-- Available Devices Section -->
+            <!-- Device List Section -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -149,7 +140,8 @@
                     android:id="@+id/empty_devices_text"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="No devices found. Click 'Scan Devices' to search."
+                    android:text="No devices found. Click 'Scan for Devices' to search."
+                    android:textSize="14sp"
                     android:textColor="@color/text_secondary"
                     android:gravity="center"
                     android:padding="16dp" />
@@ -177,10 +169,11 @@
                     android:id="@+id/log_text"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Communication log will appear here...\n"
+                    android:text=""
                     android:textSize="12sp"
                     android:textColor="@color/text_primary"
-                    android:fontFamily="monospace" />
+                    android:fontFamily="monospace"
+                    android:padding="8dp" />
 
             </ScrollView>
 
