@@ -139,7 +139,7 @@ public class MedicineManager {
 
     public void updateMedicineQuantity(String medicineName, int newQuantity) {
         try {
-            if (medicineName == null || newQuantity <= 0) {
+            if (medicineName == null || newQuantity < 0) {
                 return;
             }
 
@@ -148,11 +148,57 @@ public class MedicineManager {
                     medicine.setQuantity(newQuantity);
                     saveMedicines();
                     Log.d(TAG, "Medicine quantity updated: " + medicineName + " -> " + newQuantity);
+
+                    // If quantity reaches 0, optionally remove the medicine or keep it with 0 quantity
+                    if (newQuantity == 0) {
+                        Log.w(TAG, "Medicine " + medicineName + " is out of stock!");
+                        // You can choose to remove the medicine or keep it with 0 quantity
+                        // medicines.remove(medicine);
+                        // saveMedicines();
+                    }
                     break;
                 }
             }
         } catch (Exception e) {
             Log.e(TAG, "Error updating medicine quantity: " + e.getMessage(), e);
+        }
+    }
+
+    // New method to decrease medicine quantity when alarm triggers
+    public boolean decreaseMedicineQuantity(String medicineName) {
+        try {
+            if (medicineName == null) {
+                return false;
+            }
+
+            for (Medicine medicine : medicines) {
+                if (medicine.getName().equals(medicineName)) {
+                    int currentQuantity = medicine.getQuantity();
+
+                    if (currentQuantity > 0) {
+                        int newQuantity = currentQuantity - 1;
+                        medicine.setQuantity(newQuantity);
+                        saveMedicines();
+
+                        Log.d(TAG, "Medicine quantity decreased: " + medicineName + " from " + currentQuantity + " to " + newQuantity);
+
+                        if (newQuantity == 0) {
+                            Log.w(TAG, "Medicine " + medicineName + " is now out of stock!");
+                        }
+
+                        return true;
+                    } else {
+                        Log.w(TAG, "Cannot decrease quantity for " + medicineName + " - already at 0");
+                        return false;
+                    }
+                }
+            }
+
+            Log.w(TAG, "Medicine not found: " + medicineName);
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Error decreasing medicine quantity: " + e.getMessage(), e);
+            return false;
         }
     }
 
@@ -203,6 +249,11 @@ public class MedicineManager {
             String nextAlarmTime = null;
 
             for (Medicine medicine : medicines) {
+                // Skip medicines with 0 quantity
+                if (medicine.getQuantity() <= 0) {
+                    continue;
+                }
+
                 List<String> alarmTimes = medicine.getAlarmTimes();
                 if (alarmTimes != null) {
                     for (String timeStr : alarmTimes) {
@@ -330,7 +381,7 @@ public class MedicineManager {
         }
     }
 
-    // Utility method to create a log entry when medicine is taken
+    // Enhanced method to record medicine taken with quantity decrease
     public void recordMedicineTaken(String medicineName) {
         try {
             SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
@@ -340,8 +391,18 @@ public class MedicineManager {
             String time = timeFormat.format(now);
             String date = dateFormat.format(now);
 
+            // Decrease medicine quantity
+            boolean quantityDecreased = decreaseMedicineQuantity(medicineName);
+
+            // Create log entry
             MedicineLogEntry entry = new MedicineLogEntry(medicineName, time, date);
             addLogEntry(entry);
+
+            if (quantityDecreased) {
+                Log.d(TAG, "Medicine taken and quantity decreased: " + medicineName);
+            } else {
+                Log.w(TAG, "Medicine taken but quantity not decreased (may be out of stock): " + medicineName);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error recording medicine taken: " + e.getMessage(), e);
         }
@@ -402,5 +463,33 @@ public class MedicineManager {
             Log.e(TAG, "Error getting all alarm times: " + e.getMessage(), e);
         }
         return allTimes;
+    }
+
+    // Method to check if medicine is low on stock
+    public boolean isMedicineLowStock(String medicineName, int threshold) {
+        try {
+            Medicine medicine = getMedicineByName(medicineName);
+            if (medicine != null) {
+                return medicine.getQuantity() <= threshold;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking low stock: " + e.getMessage(), e);
+        }
+        return false;
+    }
+
+    // Method to get medicines that are out of stock
+    public List<Medicine> getOutOfStockMedicines() {
+        List<Medicine> outOfStock = new ArrayList<>();
+        try {
+            for (Medicine medicine : medicines) {
+                if (medicine.getQuantity() <= 0) {
+                    outOfStock.add(medicine);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting out of stock medicines: " + e.getMessage(), e);
+        }
+        return outOfStock;
     }
 }

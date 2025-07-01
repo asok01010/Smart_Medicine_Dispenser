@@ -1,8 +1,10 @@
 package com.smartmedicine.dispenser;
 
+import android.app.AlertDialog;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -20,6 +22,7 @@ public class MedicineLogActivity extends AppCompatActivity {
 
     private LinearLayout logContainer;
     private TextView emptyLogText;
+    private Button btnClearAll;
     private MedicineManager medicineManager;
 
     @Override
@@ -40,9 +43,18 @@ public class MedicineLogActivity extends AppCompatActivity {
             // Initialize views
             logContainer = findViewById(R.id.log_container);
             emptyLogText = findViewById(R.id.empty_log_text);
+            btnClearAll = findViewById(R.id.btn_clear_all);
 
             // Initialize medicine manager
             medicineManager = MedicineManager.getInstance(this);
+
+            // Setup clear all button click listener
+            btnClearAll.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    showClearAllConfirmationDialog();
+                }
+            });
 
             // Load medicine logs
             loadMedicineLogs();
@@ -51,6 +63,49 @@ public class MedicineLogActivity extends AppCompatActivity {
             Log.e(TAG, "Error in onCreate: " + e.getMessage(), e);
             Toast.makeText(this, "Error loading medicine log: " + e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
+        }
+    }
+
+    private void showClearAllConfirmationDialog() {
+        try {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("Clear All Logs");
+            builder.setMessage("Are you sure you want to clear all medicine history? This action cannot be undone.");
+            builder.setIcon(android.R.drawable.ic_dialog_alert);
+
+            builder.setPositiveButton("Clear All", (dialog, which) -> {
+                clearAllLogs();
+            });
+
+            builder.setNegativeButton("Cancel", (dialog, which) -> {
+                dialog.dismiss();
+            });
+
+            AlertDialog dialog = builder.create();
+            dialog.show();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing confirmation dialog: " + e.getMessage(), e);
+            Toast.makeText(this, "Error showing dialog", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void clearAllLogs() {
+        try {
+            // Clear all log entries using MedicineManager
+            medicineManager.clearLogEntries();
+
+            // Reload the UI to show empty state
+            loadMedicineLogs();
+
+            // Show success message
+            Toast.makeText(this, "All medicine logs cleared successfully", Toast.LENGTH_SHORT).show();
+
+            Log.d(TAG, "All medicine logs cleared by user");
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error clearing all logs: " + e.getMessage(), e);
+            Toast.makeText(this, "Error clearing logs: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -63,12 +118,14 @@ public class MedicineLogActivity extends AppCompatActivity {
             List<MedicineLogEntry> logEntries = medicineManager.getMedicineLogEntries();
 
             if (logEntries == null || logEntries.isEmpty()) {
-                // Show empty message
+                // Show empty message and hide clear button
                 logContainer.addView(emptyLogText);
                 emptyLogText.setVisibility(View.VISIBLE);
+                btnClearAll.setVisibility(View.GONE);
             } else {
-                // Hide empty message
+                // Hide empty message and show clear button
                 emptyLogText.setVisibility(View.GONE);
+                btnClearAll.setVisibility(View.VISIBLE);
 
                 // Add log entries
                 for (MedicineLogEntry entry : logEntries) {
@@ -84,6 +141,7 @@ public class MedicineLogActivity extends AppCompatActivity {
             logContainer.removeAllViews();
             logContainer.addView(emptyLogText);
             emptyLogText.setVisibility(View.VISIBLE);
+            btnClearAll.setVisibility(View.GONE);
         }
     }
 

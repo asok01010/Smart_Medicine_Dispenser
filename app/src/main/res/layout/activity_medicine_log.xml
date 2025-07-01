@@ -41,6 +41,19 @@
                 android:textColor="@color/primary_green"
                 android:layout_marginBottom="16dp" />
 
+            <!-- Clear All Button -->
+            <Button
+                android:id="@+id/btn_clear_all"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Clear All Logs"
+                android:textColor="@android:color/white"
+                android:background="@color/button_danger_bg"
+                android:layout_marginBottom="16dp"
+                android:padding="12dp"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
             <!-- Log Container -->
             <LinearLayout
                 android:id="@+id/log_container"
