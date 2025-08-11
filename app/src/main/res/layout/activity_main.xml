@@ -18,7 +18,7 @@
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
+            android:layout_height="70dp"
             android:background="@color/primary_green"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:title=""
@@ -28,13 +28,13 @@
                 android:id="@+id/toolbar_title"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:ellipsize="end"
                 android:gravity="center"
+                android:maxLines="1"
                 android:text="Medi-यन्त्र"
                 android:textColor="@android:color/white"
                 android:textSize="20sp"
-                android:textStyle="bold"
-                android:ellipsize="end"
-                android:maxLines="1" />
+                android:textStyle="bold" />
         </androidx.appcompat.widget.Toolbar>
 
         <!-- Content area -->

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Primary Colors -->
-    <color name="primary_green">#4CAF50</color>
-    <color name="primary_green_dark">#388E3C</color>
+    <color name="primary_green">#3998f7</color>
+    <color name="primary_green_dark">#248af0</color>
     <color name="primary_green_light">#C8E6C9</color>
 
     <!-- Accent Colors -->
