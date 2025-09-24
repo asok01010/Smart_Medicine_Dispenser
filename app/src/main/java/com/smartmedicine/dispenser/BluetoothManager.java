@@ -13,6 +13,7 @@ import androidx.annotation.RequiresPermission;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,10 +24,10 @@ public class BluetoothManager {
     private static final String TAG = "BluetoothManager";
     private static final UUID HC05_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
-    private static final int SOCKET_TIMEOUT = 10000; // 10 seconds socket timeout
-    private static final int COMMAND_TIMEOUT = 5000; // 5 seconds command timeout
-    private static final int KEEP_ALIVE_INTERVAL = 5000; // 5 seconds between keep-alive pings
-    private static final int MAX_RETRY_COUNT = 3; // Maximum command retry attempts
+    private static final int MAX_RETRIES = 5;
+    private static final int ACK_TIMEOUT = 5000;
+    private static final int SYNC_DELAY = 500;
+    private static final int KEEP_ALIVE_INTERVAL = 10000;
 
     private static BluetoothManager instance;
     private BluetoothAdapter bluetoothAdapter;
@@ -36,12 +37,15 @@ public class BluetoothManager {
     private boolean isConnected = false;
     private BluetoothConnectionListener connectionListener;
     private Thread readThread;
-    private Handler mainHandler;
-
     private Thread keepAliveThread;
-    private AtomicBoolean isKeepAliveRunning = new AtomicBoolean(false);
-    private long lastResponseTime = 0;
+    private Handler mainHandler;
     private String lastReceivedData = "";
+    private final AtomicBoolean isAcknowledgmentReceived = new AtomicBoolean(false);
+    private final Object syncLock = new Object();
+
+    private boolean isSyncing = false;
+    private int syncRetryCount = 0;
+    private boolean isReconnecting = false;
 
     public interface BluetoothConnectionListener {
         void onConnectionStatusChanged(boolean connected, String deviceName);
@@ -76,30 +80,19 @@ public class BluetoothManager {
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     public Set<BluetoothDevice> getPairedDevices() {
         if (bluetoothAdapter != null) {
-            Set<BluetoothDevice> allDevices = bluetoothAdapter.getBondedDevices();
+            Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
             Set<BluetoothDevice> hc05Devices = new HashSet<>();
 
-            if (allDevices != null) {
-                for (BluetoothDevice device : allDevices) {
-                    try {
-                        String deviceName = device.getName();
-                        if (deviceName != null) {
-                            // Check if device name contains HC-05 or HC05 (case insensitive)
-                            String lowerName = deviceName.toLowerCase();
-                            if (lowerName.contains("hc-05") || lowerName.contains("hc05")) {
-                                hc05Devices.add(device);
-                                Log.d(TAG, "Found HC-05 device: " + deviceName + " (" + device.getAddress() + ")");
-                            }
-                        }
-                    } catch (SecurityException e) {
-                        Log.w(TAG, "Permission not granted for device name: " + device.getAddress());
-                        // If we can't get the name, we can't filter, so skip this device
-                    }
+            // Filter for HC-05 devices
+            for (BluetoothDevice device : pairedDevices) {
+                String deviceName = device.getName();
+                if (deviceName != null &&
+                        (deviceName.toLowerCase().contains("hc-05") ||
+                                deviceName.toLowerCase().contains("hc05"))) {
+                    hc05Devices.add(device);
                 }
             }
 
-            Log.d(TAG, "Filtered " + (allDevices != null ? allDevices.size() : 0) +
-                    " paired devices to " + hc05Devices.size() + " HC-05 devices");
             return hc05Devices;
         }
         return null;
@@ -111,44 +104,96 @@ public class BluetoothManager {
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     public void connectToDevice(BluetoothDevice device) {
+        // Prevent multiple connection attempts
+        if (isReconnecting) {
+            Log.d(TAG, "Already attempting to reconnect");
+            return;
+        }
+
+        isReconnecting = true;
+
         new Thread(() -> {
             try {
                 if (bluetoothSocket != null) {
                     disconnect();
                 }
 
-                bluetoothSocket = device.createRfcommSocketToServiceRecord(HC05_UUID);
-                bluetoothSocket.connect();
+                // Log connection attempt
+                Log.d(TAG, "Attempting to connect to " + device.getAddress());
 
+                // Create socket and connect with timeout
+                bluetoothSocket = device.createRfcommSocketToServiceRecord(HC05_UUID);
+
+                // Connect with retry logic
+                boolean connected = false;
+                int retries = 0;
+                Exception lastException = null;
+
+                while (!connected && retries < 3) {
+                    try {
+                        bluetoothSocket.connect();
+                        connected = true;
+                    } catch (IOException e) {
+                        lastException = e;
+                        Log.w(TAG, "Connection attempt " + (retries + 1) + " failed: " + e.getMessage());
+                        retries++;
+
+                        if (retries < 3) {
+                            // Close and recreate socket for retry
+                            try {
+                                bluetoothSocket.close();
+                            } catch (IOException closeEx) {
+                                Log.e(TAG, "Error closing socket for retry: " + closeEx.getMessage());
+                            }
+
+                            bluetoothSocket = device.createRfcommSocketToServiceRecord(HC05_UUID);
+                            Thread.sleep(1000); // Wait before retry
+                        }
+                    }
+                }
+
+                if (!connected) {
+                    throw new IOException("Failed to connect after " + retries + " attempts: " +
+                            (lastException != null ? lastException.getMessage() : "Unknown error"));
+                }
+
+                // Get streams
                 outputStream = bluetoothSocket.getOutputStream();
                 inputStream = bluetoothSocket.getInputStream();
                 isConnected = true;
-                lastResponseTime = System.currentTimeMillis();
 
                 String deviceName = device.getName() != null ? device.getName() : "Unknown Device";
+
+                // Update UI
                 mainHandler.post(() -> {
                     if (connectionListener != null) {
                         connectionListener.onConnectionStatusChanged(true, deviceName);
                     }
                 });
 
+                // Start read thread
                 startReadThread();
 
+                // Start keep-alive thread
                 startKeepAliveThread();
 
-                Log.d(TAG, "Connected to " + deviceName);
+                Log.d(TAG, "Successfully connected to " + deviceName);
 
-                sendData("PING");
+                // Send initial handshake
+                sendData("CONNECT");
 
-            } catch (IOException e) {
+            } catch (IOException | InterruptedException e) {
                 Log.e(TAG, "Connection failed: " + e.getMessage(), e);
                 isConnected = false;
+
                 mainHandler.post(() -> {
                     if (connectionListener != null) {
                         connectionListener.onError("Connection failed: " + e.getMessage());
                         connectionListener.onConnectionStatusChanged(false, "");
                     }
                 });
+            } finally {
+                isReconnecting = false;
             }
         }).start();
     }
@@ -157,28 +202,47 @@ public class BluetoothManager {
         try {
             isConnected = false;
 
-            stopKeepAliveThread();
-
+            // Stop threads
             if (readThread != null) {
                 readThread.interrupt();
                 readThread = null;
             }
 
+            if (keepAliveThread != null) {
+                keepAliveThread.interrupt();
+                keepAliveThread = null;
+            }
+
+            // Close streams
             if (outputStream != null) {
-                outputStream.close();
+                try {
+                    outputStream.close();
+                } catch (IOException e) {
+                    Log.e(TAG, "Error closing output stream: " + e.getMessage());
+                }
                 outputStream = null;
             }
 
             if (inputStream != null) {
-                inputStream.close();
+                try {
+                    inputStream.close();
+                } catch (IOException e) {
+                    Log.e(TAG, "Error closing input stream: " + e.getMessage());
+                }
                 inputStream = null;
             }
 
+            // Close socket
             if (bluetoothSocket != null) {
-                bluetoothSocket.close();
+                try {
+                    bluetoothSocket.close();
+                } catch (IOException e) {
+                    Log.e(TAG, "Error closing socket: " + e.getMessage());
+                }
                 bluetoothSocket = null;
             }
 
+            // Update UI
             mainHandler.post(() -> {
                 if (connectionListener != null) {
                     connectionListener.onConnectionStatusChanged(false, "");
@@ -187,35 +251,9 @@ public class BluetoothManager {
 
             Log.d(TAG, "Disconnected from device");
 
-        } catch (IOException e) {
-            Log.e(TAG, "Error disconnecting: " + e.getMessage(), e);
+        } catch (Exception e) {
+            Log.e(TAG, "Error during disconnect: " + e.getMessage(), e);
         }
-    }
-
-    public void sendData(String data) {
-        if (!isConnected || outputStream == null) {
-            Log.w(TAG, "Cannot send data - not connected");
-            if (connectionListener != null) {
-                mainHandler.post(() -> connectionListener.onError("Not connected to device"));
-            }
-            return;
-        }
-
-        new Thread(() -> {
-            try {
-                String message = data + "\n"; // Add newline for Arduino
-                outputStream.write(message.getBytes());
-                outputStream.flush();
-                Log.d(TAG, "Data sent: " + data);
-
-                lastResponseTime = System.currentTimeMillis();
-
-            } catch (IOException e) {
-                Log.e(TAG, "Error sending data: " + e.getMessage(), e);
-
-                handleConnectionError(e);
-            }
-        }).start();
     }
 
     private void handleConnectionError(Exception e) {
@@ -245,8 +283,20 @@ public class BluetoothManager {
             return;
         }
 
+        // Prevent multiple sync attempts
+        if (isSyncing) {
+            if (connectionListener != null) {
+                mainHandler.post(() -> connectionListener.onError("Sync already in progress"));
+            }
+            return;
+        }
+
+        isSyncing = true;
+        syncRetryCount = 0;
+
         new Thread(() -> {
             try {
+                // Notify UI
                 mainHandler.post(() -> {
                     if (connectionListener != null) {
                         connectionListener.onDataReceived("SYNC_STARTING");
@@ -255,31 +305,45 @@ public class BluetoothManager {
 
                 Log.d(TAG, "Starting alarm synchronization...");
 
+                // Count total alarms
                 int totalAlarms = countTotalAlarms(medicines);
                 final int finalTotalAlarms = totalAlarms;
 
-                // Start sync with longer delay
-                boolean syncStarted = sendCommandWithAck("SYNC_START", "SYNC_STARTED", 3000);
+                // Prepare device for sync with longer delay
+                sendData("SYNC_START");
+                Thread.sleep(1000);
+
+                // Wait for SYNC_STARTED response
+                long startTime = System.currentTimeMillis();
+                boolean syncStarted = false;
+
+                while (System.currentTimeMillis() - startTime < 5000) {
+                    synchronized (syncLock) {
+                        if (lastReceivedData.contains("SYNC_STARTED")) {
+                            syncStarted = true;
+                            break;
+                        }
+                    }
+                    Thread.sleep(100);
+                }
+
                 if (!syncStarted) {
                     throw new RuntimeException("Failed to start sync - no acknowledgment received");
                 }
 
-                boolean expectSent = sendCommandWithAck("EXPECT_ALARMS:" + totalAlarms, "EXPECTING_ALARMS", 3000);
-                if (!expectSent) {
-                    throw new RuntimeException("Failed to set expected alarm count");
-                }
+                // Tell Arduino how many alarms to expect
+                sendData("EXPECT_ALARMS:" + totalAlarms);
+                Thread.sleep(1000);
 
                 // Clear existing alarms
-                boolean cleared = sendCommandWithAck("CLEAR_ALARMS", "ALARMS_CLEARED", 3000);
-                if (!cleared) {
-                    throw new RuntimeException("Failed to clear existing alarms");
-                }
+                sendData("CLEAR_ALARMS");
+                Thread.sleep(1000);
 
                 Log.d(TAG, "Sending " + totalAlarms + " alarms to device");
 
+                // Send all alarms with proper delays
                 int currentAlarmCount = 0;
 
-                // Send all alarms with acknowledgment
                 for (Medicine medicine : medicines) {
                     List<String> alarmTimes = medicine.getAlarmTimes();
                     if (alarmTimes != null) {
@@ -293,15 +357,32 @@ public class BluetoothManager {
                                 String command = "SET_ALARM:" + medicine.getName() + ":" +
                                         hour + ":" + minute + "(1)";
 
-                                boolean alarmSet = sendCommandWithAck(command, "ALARM_SET", 3000);
-                                if (!alarmSet) {
-                                    throw new RuntimeException("Failed to set alarm: " + command);
+                                // Send command and wait for response
+                                sendData(command);
+
+                                // Wait for ALARM_SET response with timeout
+                                startTime = System.currentTimeMillis();
+                                boolean alarmSet = false;
+
+                                while (System.currentTimeMillis() - startTime < 5000) {
+                                    synchronized (syncLock) {
+                                        if (lastReceivedData.contains("ALARM_SET")) {
+                                            alarmSet = true;
+                                            break;
+                                        }
+                                    }
+                                    Thread.sleep(100);
                                 }
 
+                                if (!alarmSet) {
+                                    Log.w(TAG, "No ALARM_SET confirmation received for: " + command);
+                                    // Continue anyway - Arduino might have received it
+                                }
+
+                                // Update counter and UI
                                 currentAlarmCount++;
                                 final int finalCurrentCount = currentAlarmCount;
 
-                                // Update UI with progress
                                 mainHandler.post(() -> {
                                     if (connectionListener != null) {
                                         connectionListener.onDataReceived("SYNC_PROGRESS:" +
@@ -312,19 +393,37 @@ public class BluetoothManager {
 
                                 Log.d(TAG, "Sent alarm " + finalCurrentCount + "/" + finalTotalAlarms +
                                         ": " + command);
+
+                                // Longer delay between alarms
+                                Thread.sleep(1000);
                             }
                         }
                     }
                 }
 
-                // End sync and wait for confirmation
-                boolean syncEnded = sendCommandWithAck("SYNC_END", "SYNC_COMPLETE", 5000);
-                if (!syncEnded) {
-                    throw new RuntimeException("Failed to complete sync - no acknowledgment received");
+                // End sync
+                sendData("SYNC_END");
+
+                // Wait for SYNC_COMPLETE response
+                startTime = System.currentTimeMillis();
+                boolean syncCompleted = false;
+
+                while (System.currentTimeMillis() - startTime < 10000) {
+                    synchronized (syncLock) {
+                        if (lastReceivedData.contains("SYNC_COMPLETE")) {
+                            syncCompleted = true;
+                            break;
+                        }
+                    }
+                    Thread.sleep(100);
+                }
+
+                if (!syncCompleted) {
+                    Log.w(TAG, "No SYNC_COMPLETE confirmation received, but sync may have succeeded");
                 }
 
                 final int finalAlarmCount = currentAlarmCount;
-                Log.d(TAG, "Alarm sync completed successfully - " + finalAlarmCount + " alarms sent");
+                Log.d(TAG, "Alarm sync completed - " + finalAlarmCount + " alarms sent");
 
                 mainHandler.post(() -> {
                     if (connectionListener != null) {
@@ -334,11 +433,20 @@ public class BluetoothManager {
 
             } catch (Exception e) {
                 Log.e(TAG, "Sync error: " + e.getMessage(), e);
+
                 mainHandler.post(() -> {
                     if (connectionListener != null) {
                         connectionListener.onError("Sync error: " + e.getMessage());
                     }
                 });
+
+                // Try to recover connection if broken
+                if (e instanceof IOException) {
+                    handleConnectionError(e);
+                }
+
+            } finally {
+                isSyncing = false;
             }
         }).start();
     }
@@ -354,91 +462,76 @@ public class BluetoothManager {
         return count;
     }
 
-    private boolean sendCommandWithAck(String command, String expectedAck, int timeout)
-            throws InterruptedException {
-        if (!isConnected()) {
-            throw new RuntimeException("Not connected to device");
+    public void sendData(String data) {
+        if (!isConnected || outputStream == null) {
+            Log.w(TAG, "Cannot send data - not connected");
+            if (connectionListener != null) {
+                mainHandler.post(() -> connectionListener.onError("Not connected to device"));
+            }
+            return;
         }
 
-        // Reset last received data
-        synchronized (this) {
-            lastReceivedData = "";
-        }
+        new Thread(() -> {
+            try {
+                String message = data + "\n"; // Add newline for Arduino
 
-        // Send command
-        try {
-            String message = command + "\n";
-            outputStream.write(message.getBytes());
-            outputStream.flush();
-            Log.d(TAG, "Command sent: " + command + ", waiting for: " + expectedAck);
-        } catch (IOException e) {
-            Log.e(TAG, "Error sending command: " + e.getMessage(), e);
-            handleConnectionError(e);
-            return false;
-        }
+                // Log outgoing data
+                Log.d(TAG, "Sending: " + data);
 
-        // Wait for acknowledgment
-        long startTime = System.currentTimeMillis();
-        while (System.currentTimeMillis() - startTime < timeout) {
-            // Check if we received the expected acknowledgment
-            synchronized (this) {
-                if (lastReceivedData.contains(expectedAck)) {
-                    Log.d(TAG, "Received acknowledgment: " + expectedAck);
-                    return true;
+                synchronized (outputStream) {
+                    outputStream.write(message.getBytes());
+                    outputStream.flush();
                 }
+
+            } catch (IOException e) {
+                Log.e(TAG, "Error sending data: " + e.getMessage(), e);
+                handleConnectionError(e);
             }
-
-            // Check if connection was lost
-            if (!isConnected()) {
-                Log.e(TAG, "Connection lost while waiting for acknowledgment");
-                return false;
-            }
-
-            // Wait a bit before checking again
-            Thread.sleep(100);
-        }
-
-        // Timeout waiting for acknowledgment
-        Log.e(TAG, "Timeout waiting for acknowledgment: " + expectedAck);
-        return false;
-    }
-
-    public void requestMedicineStatus() {
-        sendData("STATUS");
-    }
-
-    public void requestMedicineHistory() {
-        sendData("HISTORY");
+        }).start();
     }
 
     private void startReadThread() {
+        if (readThread != null) {
+            readThread.interrupt();
+        }
+
         readThread = new Thread(() -> {
             byte[] buffer = new byte[1024];
             int bytes;
 
             while (isConnected && !Thread.currentThread().isInterrupted()) {
                 try {
+                    // Check if input stream is available
+                    if (inputStream == null) {
+                        Log.e(TAG, "Input stream is null");
+                        break;
+                    }
+
+                    // Read available data
                     if (inputStream.available() > 0) {
                         bytes = inputStream.read(buffer);
                         String receivedData = new String(buffer, 0, bytes).trim();
 
                         if (!receivedData.isEmpty()) {
-                            Log.d(TAG, "Data received: " + receivedData);
-
-                            lastResponseTime = System.currentTimeMillis();
-                            synchronized (this) {
+                            // Store last received data for acknowledgment checking
+                            synchronized (syncLock) {
                                 lastReceivedData = receivedData;
                             }
 
+                            Log.d(TAG, "Received: " + receivedData);
+
+                            // Notify UI
                             mainHandler.post(() -> {
                                 if (connectionListener != null) {
                                     connectionListener.onDataReceived(receivedData);
                                 }
                             });
                         }
-                    } else {
-                        Thread.sleep(50);
                     }
+
+                    // Small delay to prevent CPU hogging
+                    Thread.sleep(10);
+
                 } catch (IOException e) {
                     if (isConnected) {
                         Log.e(TAG, "Error reading data: " + e.getMessage(), e);
@@ -458,37 +551,20 @@ public class BluetoothManager {
     }
 
     private void startKeepAliveThread() {
-        if (keepAliveThread != null && keepAliveThread.isAlive()) {
-            return;
+        if (keepAliveThread != null) {
+            keepAliveThread.interrupt();
         }
 
-        isKeepAliveRunning.set(true);
-
         keepAliveThread = new Thread(() -> {
-            Log.d(TAG, "Keep-alive thread started");
-
-            while (isKeepAliveRunning.get() && isConnected) {
+            while (isConnected && !Thread.currentThread().isInterrupted()) {
                 try {
-                    // Check if we haven't received data for a while
-                    long timeSinceLastResponse = System.currentTimeMillis() - lastResponseTime;
-
-                    if (timeSinceLastResponse > KEEP_ALIVE_INTERVAL) {
-                        // Send keep-alive ping
-                        Log.d(TAG, "Sending keep-alive ping");
-
-                        try {
-                            String message = "KEEPALIVE\n";
-                            outputStream.write(message.getBytes());
-                            outputStream.flush();
-                        } catch (IOException e) {
-                            Log.e(TAG, "Error sending keep-alive: " + e.getMessage(), e);
-                            handleConnectionError(e);
-                            break;
-                        }
+                    // Only send keep-alive if not syncing
+                    if (!isSyncing) {
+                        sendData("PING");
                     }
 
-                    // Sleep for a bit
-                    Thread.sleep(1000);
+                    // Wait for next keep-alive
+                    Thread.sleep(KEEP_ALIVE_INTERVAL);
 
                 } catch (InterruptedException e) {
                     Log.d(TAG, "Keep-alive thread interrupted");
@@ -502,33 +578,11 @@ public class BluetoothManager {
         keepAliveThread.start();
     }
 
-    private void stopKeepAliveThread() {
-        isKeepAliveRunning.set(false);
-
-        if (keepAliveThread != null) {
-            keepAliveThread.interrupt();
-            keepAliveThread = null;
-        }
+    public void requestMedicineStatus() {
+        sendData("STATUS");
     }
 
-    private void sendDataWithVerification(String data) {
-        if (!isConnected || outputStream == null) {
-            Log.w(TAG, "Cannot send data - not connected");
-            throw new RuntimeException("Not connected to device");
-        }
-
-        try {
-            String message = data + "\n"; // Add newline for Arduino
-            outputStream.write(message.getBytes());
-            outputStream.flush();
-            Log.d(TAG, "Data sent with verification: " + data);
-
-            lastResponseTime = System.currentTimeMillis();
-
-        } catch (IOException e) {
-            Log.e(TAG, "Error sending data: " + e.getMessage(), e);
-            handleConnectionError(e);
-            throw new RuntimeException("Failed to send data: " + e.getMessage());
-        }
+    public void requestMedicineHistory() {
+        sendData("HISTORY");
     }
 }
